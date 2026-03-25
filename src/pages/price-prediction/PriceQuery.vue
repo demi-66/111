@@ -6,26 +6,74 @@
         <div class="form-row">
           <div class="form-item">
             <label>选择仓库</label>
-            <select v-model="queryParams.warehouseId">
-              <option value="">请选择仓库</option>
-              <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.name }}</option>
-            </select>
+            <div class="multi-select" :class="{ open: warehouseOpen }">
+              <div class="ms-trigger" @click.stop="toggleDropdown('warehouse')" ref="warehouseTrigger">
+                <span v-if="queryParams.warehouseIds.length" class="ms-tags">
+                  <span v-for="id in queryParams.warehouseIds" :key="id" class="ms-tag">
+                    {{ warehouses.find(w => w.id === id)?.name }}
+                    <i @click.stop="toggleId(queryParams.warehouseIds, id)">×</i>
+                  </span>
+                </span>
+                <span v-else class="ms-placeholder">请选择仓库</span>
+                <span class="ms-arrow">▾</span>
+              </div>
+              <Teleport to="body">
+                <div v-if="warehouseOpen" class="ms-dropdown-portal" :style="dropdownStyle.warehouse" @click.stop>
+                  <label v-for="w in warehouses" :key="w.id" class="ms-option">
+                    <input type="checkbox" :value="w.id" v-model="queryParams.warehouseIds" />
+                    {{ w.name }}
+                  </label>
+                  <div v-if="!warehouses.length" class="ms-empty">暂无数据</div>
+                </div>
+              </Teleport>
+            </div>
           </div>
           <div class="form-item">
             <label>选择冶炼厂</label>
-            <select v-model="queryParams.smelterId" @change="onSmelterChange">
-              <option value="">请选择冶炼厂</option>
-              <option v-for="s in smelters" :key="s.id" :value="s.id">{{ s.name }}</option>
-            </select>
+            <div class="multi-select" :class="{ open: smelterOpen }">
+              <div class="ms-trigger" @click.stop="toggleDropdown('smelter')" ref="smelterTrigger">
+                <span v-if="queryParams.smelterIds.length" class="ms-tags">
+                  <span v-for="id in queryParams.smelterIds" :key="id" class="ms-tag">
+                    {{ smelters.find(s => s.id === id)?.name }}
+                    <i @click.stop="toggleId(queryParams.smelterIds, id)">×</i>
+                  </span>
+                </span>
+                <span v-else class="ms-placeholder">请选择冶炼厂</span>
+                <span class="ms-arrow">▾</span>
+              </div>
+              <Teleport to="body">
+                <div v-if="smelterOpen" class="ms-dropdown-portal" :style="dropdownStyle.smelter" @click.stop>
+                  <label v-for="s in smelters" :key="s.id" class="ms-option">
+                    <input type="checkbox" :value="s.id" v-model="queryParams.smelterIds" />
+                    {{ s.name }}
+                  </label>
+                  <div v-if="!smelters.length" class="ms-empty">暂无数据</div>
+                </div>
+              </Teleport>
+            </div>
           </div>
           <div class="form-item">
-            <label>选择品类（可多选）</label>
-            <div class="checkbox-group">
-              <label v-for="c in masterCategories" :key="c.id" class="checkbox-label">
-                <input type="checkbox" :value="c.id" v-model="queryParams.categoryIds" />
-                {{ c.name }}
-              </label>
-              <div v-if="!masterCategories.length" class="empty-hint">暂无品类数据</div>
+            <label>选择品类</label>
+            <div class="multi-select" :class="{ open: categoryOpen }">
+              <div class="ms-trigger" @click.stop="toggleDropdown('category')" ref="categoryTrigger">
+                <span v-if="queryParams.categoryIds.length" class="ms-tags">
+                  <span v-for="id in queryParams.categoryIds" :key="id" class="ms-tag">
+                    {{ masterCategories.find(c => c.id === id)?.name }}
+                    <i @click.stop="toggleId(queryParams.categoryIds, id)">×</i>
+                  </span>
+                </span>
+                <span v-else class="ms-placeholder">请选择品类</span>
+                <span class="ms-arrow">▾</span>
+              </div>
+              <Teleport to="body">
+                <div v-if="categoryOpen" class="ms-dropdown-portal" :style="dropdownStyle.category" @click.stop>
+                  <label v-for="c in masterCategories" :key="c.id" class="ms-option">
+                    <input type="checkbox" :value="c.id" v-model="queryParams.categoryIds" />
+                    {{ c.name }}
+                  </label>
+                  <div v-if="!masterCategories.length" class="ms-empty">暂无数据</div>
+                </div>
+              </Teleport>
             </div>
           </div>
         </div>
@@ -39,22 +87,23 @@
         <div class="result-header">比价结果</div>
         <table class="data-table">
           <thead>
-           
+            <tr>
               <th>仓库</th>
               <th>冶炼厂</th>
               <th>品类</th>
-              <th>价格(元/吨)</th>
-              <th>运费(元/吨)</th>
-              <th>总成本(元/吨)</th>
-            </thead>
+              <th>报价(元/吨)</th>
+              <th>运费(元/公里)</th>
+              <th>每车利润(元) <button class="sort-btn" @click="toggleProfitSort">{{ profitSort === 'desc' ? '↓' : profitSort === 'asc' ? '↑' : '↕' }}</button></th>
+            </tr>
+          </thead>
           <tbody>
-            <tr v-for="(item, idx) in comparisonResults" :key="idx">
+            <tr v-for="(item, idx) in sortedResults" :key="idx">
               <td>{{ item.warehouse }}</td>
               <td>{{ item.smelter }}</td>
               <td>{{ item.category }}</td>
-              <td class="price">{{ item.price }}</td>
+              <td class="price">{{ item.price != null ? item.price : '—' }}</td>
               <td class="price">{{ item.freight }}</td>
-              <td class="total">{{ item.total }}</td>
+              <td class="total">{{ item.profit != null ? item.profit : '—' }}</td>
             </tr>
           </tbody>
         </table>
@@ -65,17 +114,86 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed, reactive, nextTick } from 'vue'
 
 const API_BASE = '/tl'
+const TONS_PER_TRUCK = 35   // 每车吨数
+const DISTANCE_KM = 1       // TODO: 距离(km)，待接口支持后替换
 
 const warehouses = ref([])
 const smelters = ref([])
 const masterCategories = ref([])
-const queryParams = ref({ warehouseId: '', smelterId: '', categoryIds: [] })
+const queryParams = ref({ warehouseIds: [], smelterIds: [], categoryIds: [] })
 const comparisonResults = ref([])
 const queryLoading = ref(false)
 const queried = ref(false)
+const profitSort = ref(null)
+
+const warehouseOpen = ref(false)
+const smelterOpen = ref(false)
+const categoryOpen = ref(false)
+const warehouseTrigger = ref(null)
+const smelterTrigger = ref(null)
+const categoryTrigger = ref(null)
+const dropdownStyle = reactive({ warehouse: {}, smelter: {}, category: {} })
+
+function calcStyle(triggerEl) {
+  const r = triggerEl.getBoundingClientRect()
+  return {
+    position: 'fixed',
+    top: r.bottom + 4 + 'px',
+    left: r.left + 'px',
+    width: r.width + 'px',
+    zIndex: 9999,
+  }
+}
+
+function toggleDropdown(name) {
+  const triggerMap = { warehouse: warehouseTrigger, smelter: smelterTrigger, category: categoryTrigger }
+  const openMap = { warehouse: warehouseOpen, smelter: smelterOpen, category: categoryOpen }
+  const isOpen = openMap[name].value
+  // 关闭其他
+  warehouseOpen.value = false
+  smelterOpen.value = false
+  categoryOpen.value = false
+  if (!isOpen) {
+    nextTick(() => {
+      const el = triggerMap[name].value
+      if (el) dropdownStyle[name] = calcStyle(el)
+    })
+    openMap[name].value = true
+  }
+}
+
+// 点击外部关闭
+if (typeof window !== 'undefined') {
+  window.addEventListener('click', () => {
+    warehouseOpen.value = false
+    smelterOpen.value = false
+    categoryOpen.value = false
+  })
+}
+
+function toggleId(arr, id) {
+  const i = arr.indexOf(id)
+  if (i === -1) arr.push(id)
+  else arr.splice(i, 1)
+}
+
+const sortedResults = computed(() => {
+  if (!profitSort.value) return comparisonResults.value
+  return [...comparisonResults.value].sort((a, b) => {
+    const pa = a.profit ?? -Infinity
+    const pb = b.profit ?? -Infinity
+    return profitSort.value === 'desc' ? pb - pa : pa - pb
+  })
+})
+
+function toggleProfitSort() {
+  if (profitSort.value === null) profitSort.value = 'desc'
+  else if (profitSort.value === 'desc') profitSort.value = 'asc'
+  else profitSort.value = null
+}
 
 async function loadWarehouses() {
   try {
@@ -113,31 +231,16 @@ async function loadMasterCategories() {
   }
 }
 
-function onSmelterChange() {
-  queryParams.value.categoryIds = []
-  comparisonResults.value = []
-  queried.value = false
-}
-
 function resetQuery() {
-  queryParams.value = { warehouseId: '', smelterId: '', categoryIds: [] }
+  queryParams.value = { warehouseIds: [], smelterIds: [], categoryIds: [] }
   comparisonResults.value = []
   queried.value = false
 }
 
 async function queryComparison() {
-  if (!queryParams.value.warehouseId) {
-    alert('请选择仓库')
-    return
-  }
-  if (!queryParams.value.smelterId) {
-    alert('请选择冶炼厂')
-    return
-  }
-  if (queryParams.value.categoryIds.length === 0) {
-    alert('请至少选择一个品类')
-    return
-  }
+  if (!queryParams.value.warehouseIds.length) { alert('请选择仓库'); return }
+  if (!queryParams.value.smelterIds.length) { alert('请选择冶炼厂'); return }
+  if (!queryParams.value.categoryIds.length) { alert('请至少选择一个品类'); return }
 
   queryLoading.value = true
   queried.value = true
@@ -147,21 +250,27 @@ async function queryComparison() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        '选中仓库id列表': [queryParams.value.warehouseId],
-        '冶炼厂id列表': [queryParams.value.smelterId],
+        '选中仓库id列表': queryParams.value.warehouseIds,
+        '冶炼厂id列表': queryParams.value.smelterIds,
         '品类id列表': queryParams.value.categoryIds
       })
     })
     const data = await res.json()
     if (data.code === 200 && data.data && data.data.length) {
-      comparisonResults.value = data.data.map(item => ({
-        warehouse: item.仓库,
-        smelter: item.冶炼厂,
-        category: item.品类,
-        price: item.价格 || 0,
-        freight: item.运费列表 || 0,
-        total: (item.价格 || 0) + (item.运费列表 || 0)
-      }))
+      comparisonResults.value = data.data.map(item => {
+        const price = item['报价'] ?? null
+        const freight = item['运费'] || 0
+        // 每车利润 = 报价 × 每车吨数 - 运费(元/公里) × 距离
+        const profit = price != null ? price * TONS_PER_TRUCK - freight * DISTANCE_KM : null
+        return {
+          warehouse: item['仓库'],
+          smelter: item['冶炼厂'],
+          category: item['品类'],
+          price,
+          freight,
+          profit
+        }
+      })
     } else {
       comparisonResults.value = []
     }
@@ -214,41 +323,59 @@ onMounted(() => {
   margin-bottom: 8px;
   color: #333;
 }
-.form-item select {
+.multi-select {
+  position: relative;
   width: 100%;
-  padding: 8px 8px;
-  border: 1px solid #d9d9d9;
-  border-radius: 8px;
-  font-size: 14px;
-  background: #fff;
+  user-select: none;
 }
-.checkbox-group {
-  padding: 8px 8px;
+.ms-trigger {
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 4px 8px;
   border: 1px solid #d9d9d9;
   border-radius: 8px;
-  min-height: 44px;
   background: #fff;
-  display: flex;
+  cursor: pointer;
+  gap: 4px;
   flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
 }
-.checkbox-label {
+.multi-select.open .ms-trigger { border-color: #2e7d32; }
+.ms-placeholder { color: #aaa; font-size: 14px; flex: 1; }
+.ms-arrow { margin-left: auto; color: #888; font-size: 12px; flex-shrink: 0; }
+.ms-tags { display: flex; flex-wrap: wrap; gap: 4px; flex: 1; }
+.ms-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: #e8f5e9;
+  color: #2e7d32;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 12px;
+}
+.ms-tag i { cursor: pointer; font-style: normal; font-weight: bold; }
+.ms-tag i:hover { color: #c62828; }
+.ms-dropdown-portal {
+  background: #fff;
+  border: 1px solid #d9d9d9;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.12);
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.ms-option {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  padding: 8px 14px;
   font-size: 13px;
   cursor: pointer;
 }
-.checkbox-label input {
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
-}
-.empty-hint {
-  color: #999;
-  font-size: 13px;
-}
+.ms-option:hover { background: #f5f5f5; }
+.ms-option input { width: 15px; height: 15px; cursor: pointer; flex-shrink: 0; }
+.ms-empty { padding: 10px 14px; color: #999; font-size: 13px; }
 .form-actions {
   display: flex;
   gap: 16px;
@@ -297,6 +424,15 @@ onMounted(() => {
   color: #f57c00;
   font-weight: 600;
 }
+.sort-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 2px;
+  color: #555;
+}
+.sort-btn:hover { color: #2e7d32; }
 .empty-result {
   text-align: center;
   padding: 40px;
