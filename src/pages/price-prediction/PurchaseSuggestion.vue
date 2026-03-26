@@ -40,40 +40,15 @@
 
       <!-- 获取建议按钮 -->
       <div class="action-row">
-        <button class="btn-primary" :disabled="!hasDemands || suggestionLoading" @click="openSummaryModal">
+        <button class="btn-primary" :disabled="!hasDemands || suggestionLoading" @click="getSuggestions">
           {{ suggestionLoading ? '计算中...' : '获取采购建议' }}
         </button>
       </div>
 
-      <!-- 采购建议结果 -->
-      <div v-if="suggestions.length" class="result-section">
-        <div class="section-title">采购建议结果</div>
-        <div class="suggestions-list">
-          <div v-for="(item, idx) in suggestions" :key="idx" class="suggestion-card">
-            <div class="suggestion-header">
-              <strong>{{ item.warehouse }}</strong> → <strong>{{ item.smelter }}</strong>
-              <span class="category">{{ item.category }}</span>
-            </div>
-            <div class="suggestion-content">
-              <div class="info-row">
-                <span>需求吨数：</span>
-                <span class="value">{{ item.demand }} 吨</span>
-              </div>
-              <div class="info-row">
-                <span>价格：</span>
-                <span class="value price">{{ item.price }} 元/吨</span>
-              </div>
-              <div class="info-row">
-                <span>运费：</span>
-                <span class="value">{{ item.freight }} 元/吨</span>
-              </div>
-              <div class="info-row total">
-                <span>总成本：</span>
-                <span class="value total-price">{{ item.total }} 元</span>
-              </div>
-            </div>
-          </div>
-        </div>
+      <!-- 建议结果 -->
+      <div v-if="suggestionText" class="result-section">
+        <div class="section-title">采购建议</div>
+        <div class="suggestion-text">{{ suggestionText }}</div>
       </div>
     </div>
 
@@ -93,7 +68,7 @@
               class="search-input"
             />
             <div class="checkbox-group-modal">
-              <label v-for="w in filteredWarehouses" :key="w.id" class="checkbox-label">
+              <label v-for="w in warehouses" :key="w.id" class="checkbox-label">
                 <input type="checkbox" :value="w.id" v-model="tempSelectedWarehouseIds" />
                 {{ w.name }}
               </label>
@@ -124,7 +99,7 @@
               class="search-input"
             />
             <div class="checkbox-group-modal">
-              <label v-for="s in filteredSmelters" :key="s.id" class="checkbox-label">
+              <label v-for="s in smelters" :key="s.id" class="checkbox-label">
                 <input type="checkbox" :value="s.id" v-model="tempSelectedSmelterIds" />
                 {{ s.name }}
               </label>
@@ -151,7 +126,7 @@
             <div class="category-section">
               <div class="section-subtitle">选择品类（可多选）</div>
               <div class="checkbox-group">
-                <label v-for="c in allCategories" :key="c.id" class="checkbox-label">
+                <label v-for="c in categories" :key="c.id" class="checkbox-label">
                   <input type="checkbox" :value="c.id" v-model="tempCategoryIds" />
                   {{ c.name }}
                 </label>
@@ -184,69 +159,18 @@
         </div>
       </div>
     </teleport>
-
-    <!-- 弹窗4：汇总确认弹窗 -->
-    <teleport to="body">
-      <div v-if="summaryModalVisible" class="modal-overlay" @click.self="closeSummaryModal">
-        <div class="modal-container summary-modal">
-          <div class="modal-header">
-            <h3>确认采购需求</h3>
-            <button class="close" @click="closeSummaryModal">×</button>
-          </div>
-          <div class="modal-body summary-body">
-            <div class="summary-list">
-              <div v-for="smelterId in selectedSmelterIds" :key="smelterId" class="summary-item">
-                <div class="summary-smelter-name">{{ getSmelterName(smelterId) }}</div>
-                <div class="summary-categories">
-                  <div 
-                    v-for="(item, idx) in getSmelterConfig(smelterId)" 
-                    :key="idx" 
-                    class="summary-category-item"
-                  >
-                    {{ item.categoryName }}:{{ item.demand }}吨
-                  </div>
-                  <div v-if="!getSmelterConfig(smelterId).length" class="empty-config">
-                    未配置
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button class="btn-modal btn-primary-modal" @click="confirmAndGetSuggestions">确定</button>
-            <button class="btn-modal" @click="closeSummaryModal">取消</button>
-          </div>
-        </div>
-      </div>
-    </teleport>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 
-// ==================== 模拟数据 ====================
-const warehouses = ref([
-  { id: 101, name: '北京仓' },
-  { id: 102, name: '上海仓' },
-  { id: 103, name: '广州仓' },
-  { id: 104, name: '成都仓' }
-])
+const API_BASE = '/tl'
 
-const smelters = ref([
-  { id: 201, name: '华北冶炼厂' },
-  { id: 202, name: '华东冶炼厂' },
-  { id: 203, name: '华南冶炼厂' },
-  { id: 204, name: '西南冶炼厂' },
-  { id: 205, name: '华中冶炼厂' }
-])
-
-const allCategories = ref([
-  { id: 301, name: '铜' },
-  { id: 302, name: '铝' },
-  { id: 303, name: '锌' },
-  { id: 304, name: '铅' }
-])
+// ==================== 数据 ====================
+const warehouses = ref([])
+const smelters = ref([])
+const categories = ref([])
 
 // ==================== 状态 ====================
 // 仓库
@@ -270,31 +194,9 @@ const currentSmelter = ref(null)
 const tempCategoryIds = ref([])
 const tempDemands = ref({})
 
-// 汇总弹窗
-const summaryModalVisible = ref(false)
-
 // 建议结果
-const suggestions = ref([])
+const suggestionText = ref('')
 const suggestionLoading = ref(false)
-
-// ==================== 计算属性 ====================
-const filteredWarehouses = computed(() => {
-  if (!warehouseSearch.value) return warehouses.value
-  return warehouses.value.filter(w => 
-    w.name.toLowerCase().includes(warehouseSearch.value.toLowerCase())
-  )
-})
-
-const filteredSmelters = computed(() => {
-  if (!smelterSearch.value) return smelters.value
-  return smelters.value.filter(s => 
-    s.name.toLowerCase().includes(smelterSearch.value.toLowerCase())
-  )
-})
-
-const hasDemands = computed(() => {
-  return Object.keys(smelterConfigs.value).length > 0
-})
 
 // ==================== 辅助函数 ====================
 function getWarehouseName(id) {
@@ -308,7 +210,7 @@ function getSmelterName(id) {
 }
 
 function getCategoryName(id) {
-  const c = allCategories.value.find(c => c.id === id)
+  const c = categories.value.find(c => c.id === id)
   return c ? c.name : ''
 }
 
@@ -320,6 +222,50 @@ function getSmelterConfig(smelterId) {
     categoryName: getCategoryName(Number(categoryId)),
     demand: demand
   }))
+}
+
+const hasDemands = computed(() => {
+  return Object.keys(smelterConfigs.value).length > 0
+})
+
+// ==================== 接口调用 ====================
+// 接口1: 获取仓库列表
+async function loadWarehouses() {
+  try {
+    const res = await fetch(`${API_BASE}/get_warehouses`)
+    const data = await res.json()
+    if (data.code === 200) {
+      warehouses.value = data.data.map(w => ({ id: w['仓库id'], name: w['仓库名'] }))
+    }
+  } catch (err) {
+    console.error('获取仓库失败', err)
+  }
+}
+
+// 接口2: 获取冶炼厂列表
+async function loadSmelters() {
+  try {
+    const res = await fetch(`${API_BASE}/get_smelters`)
+    const data = await res.json()
+    if (data.code === 200) {
+      smelters.value = data.data.map(s => ({ id: s['冶炼厂id'], name: s['冶炼厂'] }))
+    }
+  } catch (err) {
+    console.error('获取冶炼厂失败', err)
+  }
+}
+
+// 接口3: 获取品类列表
+async function loadCategories() {
+  try {
+    const res = await fetch(`${API_BASE}/get_categories`)
+    const data = await res.json()
+    if (data.code === 200) {
+      categories.value = data.data.map(c => ({ id: c['品类id'], name: c['品类名'] }))
+    }
+  } catch (err) {
+    console.error('获取品类失败', err)
+  }
 }
 
 // ==================== 仓库弹窗 ====================
@@ -411,76 +357,67 @@ function saveConfig() {
   closeConfigModal()
 }
 
-// ==================== 汇总弹窗 ====================
-function openSummaryModal() {
+// ==================== 获取采购建议 ====================
+async function getSuggestions() {
   if (!selectedWarehouseIds.value.length) {
     alert('请选择仓库')
     return
   }
   
-  const hasAnyConfig = selectedSmelterIds.value.some(id => {
-    const config = smelterConfigs.value[id]
-    return config && Object.keys(config).length > 0
-  })
-  
-  if (!hasAnyConfig) {
-    alert('请先配置需求')
-    return
-  }
-  
-  summaryModalVisible.value = true
-}
-
-function closeSummaryModal() {
-  summaryModalVisible.value = false
-}
-
-// 确认后获取建议
-async function confirmAndGetSuggestions() {
-  closeSummaryModal()
-  await getSuggestions()
-}
-
-// 需求列表
-const demandList = computed(() => {
-  const list = []
+  const demands = []
   for (const smelterId of selectedSmelterIds.value) {
     const config = smelterConfigs.value[smelterId]
     if (config) {
       for (const [categoryId, demand] of Object.entries(config)) {
-        list.push({
-          smelterId: Number(smelterId),
-          smelterName: getSmelterName(Number(smelterId)),
-          categoryId: Number(categoryId),
-          categoryName: getCategoryName(Number(categoryId)),
+        demands.push({
+          smelter_id: Number(smelterId),
+          category_id: Number(categoryId),
           demand: demand
         })
       }
     }
   }
-  return list
-})
-
-// ==================== 获取采购建议 ====================
-async function getSuggestions() {
+  
+  if (demands.length === 0) {
+    alert('请先配置需求')
+    return
+  }
+  
   suggestionLoading.value = true
   
-  setTimeout(() => {
-    suggestions.value = demandList.value.map(item => {
-      const warehouse = warehouses.value.find(w => selectedWarehouseIds.value.includes(w.id)) || warehouses.value[0]
-      return {
-        warehouse: warehouse.name,
-        smelter: item.smelterName,
-        category: item.categoryName,
-        demand: item.demand,
-        price: Math.floor(Math.random() * 5000) + 5000,
-        freight: Math.floor(Math.random() * 300) + 100,
-        total: item.demand * (Math.floor(Math.random() * 5000) + 5000 + Math.floor(Math.random() * 300) + 100)
-      }
+  try {
+    // TODO: 需要后端提供采购建议接口
+    // 接口地址: /tl/get_purchase_suggestion
+    // 请求方式: POST
+    // 请求体: { warehouse_ids: [101,102], demands: [{ smelter_id, category_id, demand }] }
+    // 返回: { code: 200, data: { suggestion: "建议文字..." } }
+    
+    const res = await fetch(`${API_BASE}/get_purchase_suggestion`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        warehouse_ids: selectedWarehouseIds.value,
+        demands: demands
+      })
     })
+    const data = await res.json()
+    if (data.code === 200) {
+      suggestionText.value = data.data?.suggestion || '暂无建议'
+    } else {
+      alert(data.msg || '获取建议失败')
+    }
+  } catch (err) {
+    alert('请求失败，请稍后重试')
+  } finally {
     suggestionLoading.value = false
-  }, 1000)
+  }
 }
+
+onMounted(() => {
+  loadWarehouses()
+  loadSmelters()
+  loadCategories()
+})
 </script>
 
 <style scoped>
@@ -635,7 +572,7 @@ async function getSuggestions() {
   cursor: not-allowed;
 }
 
-/* 结果卡片 */
+/* 结果区域 */
 .result-section {
   margin-top: 24px;
   border-top: 1px solid #e8e8e8;
@@ -645,138 +582,19 @@ async function getSuggestions() {
   font-size: 16px;
   font-weight: 600;
   margin-bottom: 12px;
-}
-.suggestions-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.suggestion-card {
-  border: 1px solid #e8e8e8;
-  border-radius: 8px;
-  padding: 14px;
-  background: #fafafa;
-}
-.suggestion-header {
-  font-size: 14px;
-  margin-bottom: 10px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid #e8e8e8;
-}
-.suggestion-header strong {
-  color: #2e7d32;
-}
-.category {
-  background: #e8f5e9;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 12px;
-  margin-left: 10px;
-}
-.suggestion-content {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-}
-.info-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 14px;
-}
-.info-row span:first-child {
-  color: #666;
-}
-.value {
-  font-weight: 500;
-}
-.price {
-  color: #2e7d32;
-}
-.total {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #e8e8e8;
-  grid-column: span 2;
-}
-.total-price {
-  color: #f57c00;
-  font-weight: 600;
-  font-size: 15px;
-}
-
-/* 汇总弹窗样式 */
-.summary-modal {
-  max-width: 620px;
-}
-.summary-body {
-  max-height: 65vh;
-  overflow-y: auto;
-}
-.summary-body::-webkit-scrollbar {
-  width: 6px;
-}
-.summary-body::-webkit-scrollbar-track {
-  background: #f0f0f0;
-  border-radius: 3px;
-}
-.summary-body::-webkit-scrollbar-thumb {
-  background: #c0c0c0;
-  border-radius: 3px;
-}
-.summary-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.summary-item {
-  border: 1px solid #e8e8e8;
-  border-radius: 8px;
-  padding: 14px;
-  background: #fafafa;
-}
-.summary-smelter-name {
-  font-weight: 600;
-  font-size: 15px;
-  color: #2e7d32;
-  margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #e8e8e8;
-}
-.summary-categories {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-  max-height: 90px;
-  overflow-y: auto;
-  padding-right: 4px;
-}
-.summary-categories::-webkit-scrollbar {
-  width: 4px;
-}
-.summary-categories::-webkit-scrollbar-track {
-  background: #f0f0f0;
-  border-radius: 2px;
-}
-.summary-categories::-webkit-scrollbar-thumb {
-  background: #c0c0c0;
-  border-radius: 2px;
-}
-.summary-category-item {
-  font-size: 14px;
   color: #333;
-  padding: 6px 10px;
-  background: #fff;
-  border-radius: 4px;
-  border: 1px solid #e8e8e8;
 }
-.empty-config {
-  font-size: 13px;
-  color: #999;
-  padding: 6px 10px;
-  text-align: center;
+.suggestion-text {
+  background: #f5f5f5;
+  padding: 16px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #333;
+  border-left: 4px solid #2e7d32;
 }
 
-/* 通用弹窗 - 加大尺寸 */
+/* 弹窗样式 */
 .modal-overlay {
   position: fixed;
   top: 0;
