@@ -44,7 +44,7 @@
           <div class="group-title">系统管理</div>
           <ul>
             <li :class="{ active: currentPage === 'user' }" @click="currentPage = 'user'">
-              <span class="menu-icon">👥</span>用户管理
+              <span class="menu-icon"></span>用户管理
             </li>
           </ul>
         </div>

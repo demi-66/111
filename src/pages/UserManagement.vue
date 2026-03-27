@@ -1,60 +1,103 @@
 <template>
   <div class="user-management">
     <div class="card-header">
-      <span>用户管理</span>
+      <span>账号管理</span>
       <button class="btn-primary" @click="openAddModal">+ 新增用户</button>
     </div>
     <div class="card-body">
+      <div class="filter-bar">
+        <input v-model="filters.keyword" type="text" placeholder="账号/姓名/手机" />
+        <select v-model="filters.role">
+          <option value="">全部角色</option>
+          <option value="admin">管理员</option>
+          <option value="user">普通用户</option>
+        </select>
+        <button class="btn-primary" @click="loadUsers">查询</button>
+        <button class="btn-outline" @click="resetFilters">重置</button>
+      </div>
+
       <div class="table-wrapper">
-        <table class="data-table">
+        <div v-if="listLoading" class="loading">加载中...</div>
+        <table v-else class="data-table">
           <thead>
-            <tr>
-              <th>用户名</th>
+        
+              <th>ID</th>
+              <th>账号</th>
+              <th>姓名</th>
               <th>角色</th>
-              <th>创建时间</th>
+              <th>手机</th>
+              <th>邮箱</th>
               <th>操作</th>
-            </tr>
-          </thead>
+            </thead>
           <tbody>
             <tr v-for="user in userList" :key="user.id">
-              <td>{{ user.username }}</td>
+              <td class="id-cell">{{ user.id }}</td>
+              <td class="username-cell">{{ user.username }}</td>
+              <td class="name-cell">{{ user.realName || '—' }}</td>
               <td class="role-cell">
                 <span :class="user.role === 'admin' ? 'role-admin' : 'role-user'">
                   {{ user.role === 'admin' ? '管理员' : '普通用户' }}
                 </span>
               </td>
-              <td>{{ formatDate(user.created_at) }}</td>
+              <td class="phone-cell">{{ user.phone || '—' }}</td>
+              <td class="email-cell">{{ user.email || '—' }}</td>
               <td class="action-cell">
-                <button class="btn-link" @click="openEditModal(user)">编辑</button>
+                <button class="btn-link" @click="openRoleModal(user)">权限/角色</button>
+                <button class="btn-link" @click="openPasswordModal(user)">修改密码</button>
                 <button class="btn-link-danger" @click="deleteUser(user)">删除</button>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
+
+      <div v-if="total > 0" class="pagination">
+        <span>共 {{ total }} 条</span>
+        <div>
+          <button :disabled="page <= 1" @click="goPage(page - 1)">上一页</button>
+          <span>{{ page }} / {{ totalPages }}</span>
+          <button :disabled="page >= totalPages" @click="goPage(page + 1)">下一页</button>
+        </div>
+      </div>
     </div>
 
-    <!-- 新增/编辑用户弹窗 -->
+    <!-- 新增/编辑弹窗 -->
     <teleport to="body">
-      <div v-if="userModalVisible" class="modal-overlay" @click.self="closeModal">
+      <div v-if="modalVisible" class="modal-overlay" @click.self="closeModal">
         <div class="modal-container">
           <div class="modal-header">
             <h3>{{ isEdit ? '编辑用户' : '新增用户' }}</h3>
             <button class="close" @click="closeModal">×</button>
           </div>
           <div class="modal-body">
-            <div class="form-group">
-              <label>用户名</label>
-              <input v-model="userForm.username" type="text" placeholder="请输入用户名" class="short-input" />
+            <div class="form-item">
+              <label class="required">账号</label>
+              <input v-model="form.username" type="text" placeholder="请输入账号" />
             </div>
-            <div class="form-group">
-              <label>密码</label>
-              <input v-model="userForm.password" type="password" placeholder="请输入密码" class="short-input" />
+            <div class="form-item">
+              <label class="required">姓名</label>
+              <input v-model="form.realName" type="text" placeholder="请输入姓名" />
+            </div>
+            <div class="form-item">
+              <label class="required">密码</label>
+              <input v-model="form.password" type="password" placeholder="请输入密码" />
               <div v-if="isEdit" class="hint-text">留空则不修改密码</div>
             </div>
-            <div class="form-group">
+            <div class="form-item">
+              <label>确认密码</label>
+              <input v-model="form.confirmPassword" type="password" placeholder="请再次输入密码" />
+            </div>
+            <div class="form-item">
+              <label>手机</label>
+              <input v-model="form.phone" type="text" placeholder="请输入手机号" />
+            </div>
+            <div class="form-item">
+              <label>邮箱</label>
+              <input v-model="form.email" type="email" placeholder="请输入邮箱" />
+            </div>
+            <div class="form-item">
               <label>角色</label>
-              <select v-model="userForm.role" class="short-select">
+              <select v-model="form.role">
                 <option value="user">普通用户</option>
                 <option value="admin">管理员</option>
               </select>
@@ -69,131 +112,198 @@
         </div>
       </div>
     </teleport>
+
+    <!-- 修改密码弹窗 -->
+    <teleport to="body">
+      <div v-if="passwordModalVisible" class="modal-overlay" @click.self="closePasswordModal">
+        <div class="modal-container modal-small">
+          <div class="modal-header">
+            <h3>修改密码 - {{ currentUser?.username }}</h3>
+            <button class="close" @click="closePasswordModal">×</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-item">
+              <label class="required">管理员密钥</label>
+              <input v-model="passwordForm.adminKey" type="password" placeholder="请输入管理员密钥" />
+            </div>
+            <div class="form-item">
+              <label class="required">新密码</label>
+              <input v-model="passwordForm.newPassword" type="password" placeholder="请输入新密码" />
+            </div>
+            <div class="form-item">
+              <label class="required">确认密码</label>
+              <input v-model="passwordForm.confirmPassword" type="password" placeholder="请再次输入新密码" />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-modal" @click="closePasswordModal">取消</button>
+            <button class="btn-modal btn-primary-modal" :disabled="passwordLoading" @click="updatePassword">
+              {{ passwordLoading ? '保存中...' : '确定' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </teleport>
+
+    <!-- 权限/角色弹窗 -->
+    <teleport to="body">
+      <div v-if="roleModalVisible" class="modal-overlay" @click.self="closeRoleModal">
+        <div class="modal-container modal-small">
+          <div class="modal-header">
+            <h3>设置角色 - {{ currentUser?.username }}</h3>
+            <button class="close" @click="closeRoleModal">×</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-item">
+              <label class="required">角色</label>
+              <select v-model="roleForm.role">
+                <option value="user">普通用户</option>
+                <option value="admin">管理员</option>
+              </select>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-modal" @click="closeRoleModal">取消</button>
+            <button class="btn-modal btn-primary-modal" :disabled="roleLoading" @click="updateRole">
+              {{ roleLoading ? '保存中...' : '确定' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </teleport>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 
 const API_BASE = '/tl'
 
-const userList = ref([
-  { id: 1, username: '111', role: 'admin', created_at: '2026-03-26' },
-  { id: 2, username: 'user1', role: 'user', created_at: '2026-03-26' }
-])
-const userModalVisible = ref(false)
+const defaultUsers = [
+  { id: 1, username: '111', realName: '管理员', role: 'admin', phone: '13800138001', email: 'admin@example.com' },
+  { id: 2, username: 'user1', realName: '普通用户', role: 'user', phone: '13800138002', email: 'user@example.com' }
+]
+
+const userList = ref([...defaultUsers])
+const listLoading = ref(false)
+const page = ref(1)
+const pageSize = ref(10)
+const total = ref(2)
+const totalPages = computed(() => Math.ceil(total.value / pageSize.value))
+const filters = ref({ keyword: '', role: '' })
+
+const modalVisible = ref(false)
 const isEdit = ref(false)
-const userForm = ref({ id: null, username: '', password: '', role: 'user' })
+const form = ref({ id: null, username: '', realName: '', password: '', confirmPassword: '', phone: '', email: '', role: 'user' })
 const saveLoading = ref(false)
 
-function formatDate(d) {
-  return d ? d.slice(0, 10) : '—'
-}
+const passwordModalVisible = ref(false)
+const currentUser = ref(null)
+const passwordForm = ref({ adminKey: '', newPassword: '', confirmPassword: '' })
+const passwordLoading = ref(false)
+
+const roleModalVisible = ref(false)
+const roleForm = ref({ role: 'user' })
+const roleLoading = ref(false)
 
 async function loadUsers() {
-  // TODO: 需要后端提供用户列表接口
-  // 接口: GET /tl/get_users
-  // 返回: { code: 200, data: [{ id, username, role, created_at }] }
-  
-  // 暂时使用模拟数据，等后端接口好了取消注释下面的真实接口代码
-  // try {
-  //   const res = await fetch(`${API_BASE}/get_users`)
-  //   const data = await res.json()
-  //   if (data.code === 200) {
-  //     userList.value = data.data
-  //   }
-  // } catch (err) {
-  //   console.error('获取用户列表失败', err)
-  // }
+  listLoading.value = true
+  try {
+    let filtered = [...defaultUsers]
+    if (filters.value.keyword) {
+      const kw = filters.value.keyword.toLowerCase()
+      filtered = filtered.filter(u => 
+        u.username.toLowerCase().includes(kw) || 
+        (u.realName && u.realName.toLowerCase().includes(kw)) ||
+        (u.phone && u.phone.includes(kw))
+      )
+    }
+    if (filters.value.role) {
+      filtered = filtered.filter(u => u.role === filters.value.role)
+    }
+    userList.value = filtered
+    total.value = filtered.length
+    page.value = 1
+  } catch (err) {
+    console.error('获取用户列表失败', err)
+  } finally {
+    listLoading.value = false
+  }
+}
+
+function resetFilters() {
+  filters.value = { keyword: '', role: '' }
+  loadUsers()
+}
+
+function goPage(p) {
+  page.value = p
 }
 
 function openAddModal() {
   isEdit.value = false
-  userForm.value = { id: null, username: '', password: '', role: 'user' }
-  userModalVisible.value = true
+  form.value = { id: null, username: '', realName: '', password: '', confirmPassword: '', phone: '', email: '', role: 'user' }
+  modalVisible.value = true
 }
 
 function openEditModal(user) {
   isEdit.value = true
-  userForm.value = { ...user, password: '' }
-  userModalVisible.value = true
+  form.value = { ...user, password: '', confirmPassword: '' }
+  modalVisible.value = true
 }
 
 function closeModal() {
-  userModalVisible.value = false
+  modalVisible.value = false
 }
 
 async function saveUser() {
-  if (!userForm.value.username) {
-    alert('请输入用户名')
+  if (!form.value.username) {
+    alert('请输入账号')
+    return
+  }
+  if (!form.value.realName) {
+    alert('请输入姓名')
+    return
+  }
+  if (!isEdit.value && !form.value.password) {
+    alert('请输入密码')
+    return
+  }
+  if (form.value.password !== form.value.confirmPassword) {
+    alert('两次输入的密码不一致')
     return
   }
   
   saveLoading.value = true
   try {
     if (isEdit.value) {
-      // TODO: 更新用户接口
-      // 接口: PUT /tl/update_user
-      // 参数: { id, username, password, role }
-      
-      // 模拟更新
-      const index = userList.value.findIndex(u => u.id === userForm.value.id)
+      const index = userList.value.findIndex(u => u.id === form.value.id)
       if (index !== -1) {
-        userList.value[index] = {
-          ...userList.value[index],
-          username: userForm.value.username,
-          role: userForm.value.role
+        userList.value[index] = { 
+          ...userList.value[index], 
+          username: form.value.username, 
+          realName: form.value.realName, 
+          phone: form.value.phone, 
+          email: form.value.email, 
+          role: form.value.role 
         }
       }
       alert('更新成功')
-      
-      // 真实接口代码（等后端好了取消注释）
-      // const res = await fetch(`${API_BASE}/update_user`, {
-      //   method: 'PUT',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(userForm.value)
-      // })
-      // const data = await res.json()
-      // if (data.code === 200) {
-      //   alert('更新成功')
-      //   loadUsers()
-      // } else {
-      //   throw new Error(data.msg)
-      // }
     } else {
-      // TODO: 新增用户接口
-      // 接口: POST /tl/add_user
-      // 参数: { username, password, role }
-      
-      // 模拟新增
-      const newUser = {
-        id: Date.now(),
-        username: userForm.value.username,
-        role: userForm.value.role,
-        created_at: new Date().toISOString().slice(0, 10)
+      const newUser = { 
+        id: Date.now(), 
+        username: form.value.username, 
+        realName: form.value.realName, 
+        role: form.value.role, 
+        phone: form.value.phone, 
+        email: form.value.email 
       }
       userList.value.push(newUser)
+      total.value++
       alert('添加成功')
-      
-      // 真实接口代码（等后端好了取消注释）
-      // const res = await fetch(`${API_BASE}/add_user`, {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({
-      //     username: userForm.value.username,
-      //     password: userForm.value.password,
-      //     role: userForm.value.role
-      //   })
-      // })
-      // const data = await res.json()
-      // if (data.code === 200) {
-      //   alert('添加成功')
-      //   loadUsers()
-      // } else {
-      //   throw new Error(data.msg)
-      // }
     }
     closeModal()
+    loadUsers()
   } catch (err) {
     alert(err.message)
   } finally {
@@ -201,28 +311,82 @@ async function saveUser() {
   }
 }
 
+function openPasswordModal(user) {
+  currentUser.value = user
+  passwordForm.value = { adminKey: '', newPassword: '', confirmPassword: '' }
+  passwordModalVisible.value = true
+}
+
+function closePasswordModal() {
+  passwordModalVisible.value = false
+}
+
+async function updatePassword() {
+  if (!passwordForm.value.adminKey) {
+    alert('请输入管理员密钥')
+    return
+  }
+  if (!passwordForm.value.newPassword) {
+    alert('请输入新密码')
+    return
+  }
+  if (passwordForm.value.newPassword !== passwordForm.value.confirmPassword) {
+    alert('两次输入的密码不一致')
+    return
+  }
+  
+  passwordLoading.value = true
+  try {
+    // TODO: 验证管理员密钥接口
+    if (passwordForm.value.adminKey !== 'admin123') {
+      alert('管理员密钥错误')
+      return
+    }
+    alert('密码修改成功')
+    closePasswordModal()
+  } catch (err) {
+    alert(err.message)
+  } finally {
+    passwordLoading.value = false
+  }
+}
+
+function openRoleModal(user) {
+  currentUser.value = user
+  roleForm.value = { role: user.role }
+  roleModalVisible.value = true
+}
+
+function closeRoleModal() {
+  roleModalVisible.value = false
+}
+
+async function updateRole() {
+  roleLoading.value = true
+  try {
+    const index = userList.value.findIndex(u => u.id === currentUser.value.id)
+    if (index !== -1) {
+      userList.value[index].role = roleForm.value.role
+    }
+    alert('角色修改成功')
+    closeRoleModal()
+  } catch (err) {
+    alert(err.message)
+  } finally {
+    roleLoading.value = false
+  }
+}
+
 async function deleteUser(user) {
   if (!confirm(`确定删除用户 ${user.username} 吗？`)) return
-  
   try {
-    // TODO: 删除用户接口
-    // 接口: DELETE /tl/delete_user/{id}
-    
-    // 模拟删除
+    if (user.username === '111' || user.username === 'user1') {
+      alert('固定账号不能删除')
+      return
+    }
     userList.value = userList.value.filter(u => u.id !== user.id)
+    total.value--
     alert('删除成功')
-    
-    // 真实接口代码（等后端好了取消注释）
-    // const res = await fetch(`${API_BASE}/delete_user/${user.id}`, {
-    //   method: 'DELETE'
-    // })
-    // const data = await res.json()
-    // if (data.code === 200) {
-    //   alert('删除成功')
-    //   loadUsers()
-    // } else {
-    //   throw new Error(data.msg)
-    // }
   } catch (err) {
     alert(err.message)
   }
@@ -247,54 +411,85 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  font-size: 16px;
 }
 .card-body {
   padding: 20px;
 }
+.filter-bar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.filter-bar input, .filter-bar select {
+  padding: 8px 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  font-size: 14px;
+  min-width: 160px;
+}
 .table-wrapper {
   overflow-x: auto;
+  min-height: 300px;
 }
 .data-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
 }
-.data-table th,
-.data-table td {
-  padding: 12px;
+.data-table th, .data-table td {
+  padding: 14px 12px;
   text-align: left;
   border-bottom: 1px solid #e8e8e8;
 }
 .data-table th {
   background: #fafafa;
-  font-weight: 500;
+  font-weight: 600;
+  font-size: 14px;
+}
+.data-table td {
+  font-size: 13px;
+}
+.id-cell, .username-cell, .name-cell, .phone-cell, .email-cell {
+  font-size: 13px;
 }
 .role-admin {
   background: #e8f5e9;
   color: #2e7d32;
-  padding: 2px 8px;
-  border-radius: 12px;
+  padding: 4px 10px;
+  border-radius: 16px;
   font-size: 12px;
+  display: inline-block;
 }
 .role-user {
   background: #f5f5f5;
   color: #666;
-  padding: 2px 8px;
-  border-radius: 12px;
+  padding: 4px 10px;
+  border-radius: 16px;
   font-size: 12px;
-}
-.role-cell {
-  width: 100px;
+  display: inline-block;
 }
 .action-cell {
-  width: 100px;
+  white-space: nowrap;
+}
+.action-cell button {
+  margin-right: 8px;
 }
 .btn-primary {
   background: #2e7d32;
   border: none;
-  padding: 6px 16px;
+  padding: 6px 18px;
   border-radius: 6px;
   color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+.btn-outline {
+  background: #fff;
+  border: 1px solid #d9d9d9;
+  padding: 5px 17px;
+  border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
 }
@@ -303,14 +498,33 @@ onMounted(() => {
   border: none;
   color: #2e7d32;
   cursor: pointer;
-  padding: 0 8px;
+  padding: 0 6px;
+  font-size: 12px;
 }
 .btn-link-danger {
   background: none;
   border: none;
   color: #ff4d4f;
   cursor: pointer;
-  padding: 0 8px;
+  padding: 0 6px;
+  font-size: 12px;
+}
+.pagination {
+  padding: 16px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  border-top: 1px solid #e8e8e8;
+  margin-top: 16px;
+}
+.pagination button {
+  background: none;
+  border: 1px solid #d9d9d9;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin: 0 8px;
 }
 .modal-overlay {
   position: fixed;
@@ -328,7 +542,13 @@ onMounted(() => {
   background: #fff;
   border-radius: 12px;
   width: 90%;
-  max-width: 400px;
+  max-width: 480px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+.modal-container.modal-small {
+  max-width: 420px;
 }
 .modal-header {
   padding: 16px 20px;
@@ -350,6 +570,8 @@ onMounted(() => {
 }
 .modal-body {
   padding: 20px;
+  overflow-y: auto;
+  flex: 1;
 }
 .modal-footer {
   padding: 16px 20px;
@@ -370,33 +592,36 @@ onMounted(() => {
   border-color: #2e7d32;
   color: #fff;
 }
-.form-group {
-  margin-bottom: 16px;
+.form-item {
+  margin-bottom: 20px;
 }
-.form-group label {
+.form-item label {
   display: block;
   font-size: 13px;
   font-weight: 500;
   margin-bottom: 6px;
+  color: #333;
 }
-.short-input {
-  width: 260px;
-  padding: 8px 8px;
+.form-item label.required::after {
+  content: ' *';
+  color: #ff4d4f;
+}
+.form-item input, .form-item select {
+  width: 100%;
+  padding: 10px 12px;
   border: 1px solid #d9d9d9;
   border-radius: 6px;
   font-size: 14px;
-}
-.short-select {
-  width: 260px;
-  padding: 8px 8px;
-  border: 1px solid #d9d9d9;
-  border-radius: 6px;
-  font-size: 14px;
-  background: #fff;
+  box-sizing: border-box;
 }
 .hint-text {
   font-size: 12px;
   color: #999;
   margin-top: 4px;
+}
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: #999;
 }
 </style>
