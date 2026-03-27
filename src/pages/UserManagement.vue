@@ -176,19 +176,24 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useAuthStore } from '../stores/auth'
 
-const API_BASE = '/tl'
+const API_BASE = '/auth'
+const authStore = useAuthStore()
 
-const defaultUsers = [
-  { id: 1, username: '111', realName: '管理员', role: 'admin', phone: '13800138001', email: 'admin@example.com' },
-  { id: 2, username: 'user1', realName: '普通用户', role: 'user', phone: '13800138002', email: 'user@example.com' }
-]
+function authHeaders() {
+  return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authStore.token}` }
+}
 
-const userList = ref([...defaultUsers])
+function mapUser(u) {
+  return { id: u.id, username: u.username, realName: u.real_name, role: u.role, phone: u.phone, email: u.email }
+}
+
+const userList = ref([])
 const listLoading = ref(false)
 const page = ref(1)
 const pageSize = ref(10)
-const total = ref(2)
+const total = ref(0)
 const totalPages = computed(() => Math.ceil(total.value / pageSize.value))
 const filters = ref({ keyword: '', role: '' })
 
@@ -206,24 +211,25 @@ const roleModalVisible = ref(false)
 const roleForm = ref({ role: 'user' })
 const roleLoading = ref(false)
 
+async function apiFetch(url, options = {}) {
+  const res = await fetch(url, options)
+  const text = await res.text()
+  if (!text) throw new Error(`服务器无响应（HTTP ${res.status}）`)
+  let data
+  try { data = JSON.parse(text) } catch { throw new Error(`响应格式错误：${text.slice(0, 100)}`) }
+  if (data.code !== 200) throw new Error(data.msg || data.detail || '操作失败')
+  return data
+}
+
 async function loadUsers() {
   listLoading.value = true
   try {
-    let filtered = [...defaultUsers]
-    if (filters.value.keyword) {
-      const kw = filters.value.keyword.toLowerCase()
-      filtered = filtered.filter(u => 
-        u.username.toLowerCase().includes(kw) || 
-        (u.realName && u.realName.toLowerCase().includes(kw)) ||
-        (u.phone && u.phone.includes(kw))
-      )
-    }
-    if (filters.value.role) {
-      filtered = filtered.filter(u => u.role === filters.value.role)
-    }
-    userList.value = filtered
-    total.value = filtered.length
-    page.value = 1
+    const params = new URLSearchParams({ page: page.value, page_size: pageSize.value })
+    if (filters.value.keyword) params.set('keyword', filters.value.keyword)
+    if (filters.value.role) params.set('role', filters.value.role)
+    const data = await apiFetch(`${API_BASE}/users?${params}`, { headers: authHeaders() })
+    userList.value = data.data.list.map(mapUser)
+    total.value = data.data.total
   } catch (err) {
     console.error('获取用户列表失败', err)
   } finally {
@@ -233,11 +239,13 @@ async function loadUsers() {
 
 function resetFilters() {
   filters.value = { keyword: '', role: '' }
+  page.value = 1
   loadUsers()
 }
 
 function goPage(p) {
   page.value = p
+  loadUsers()
 }
 
 function openAddModal() {
@@ -246,62 +254,30 @@ function openAddModal() {
   modalVisible.value = true
 }
 
-function openEditModal(user) {
-  isEdit.value = true
-  form.value = { ...user, password: '', confirmPassword: '' }
-  modalVisible.value = true
-}
-
 function closeModal() {
   modalVisible.value = false
 }
 
 async function saveUser() {
-  if (!form.value.username) {
-    alert('请输入账号')
-    return
-  }
-  if (!form.value.realName) {
-    alert('请输入姓名')
-    return
-  }
-  if (!isEdit.value && !form.value.password) {
-    alert('请输入密码')
-    return
-  }
-  if (form.value.password !== form.value.confirmPassword) {
-    alert('两次输入的密码不一致')
-    return
-  }
-  
+  if (!form.value.username) { alert('请输入账号'); return }
+  if (!form.value.realName) { alert('请输入姓名'); return }
+  if (!isEdit.value && !form.value.password) { alert('请输入密码'); return }
+  if (form.value.password !== form.value.confirmPassword) { alert('两次输入的密码不一致'); return }
   saveLoading.value = true
   try {
-    if (isEdit.value) {
-      const index = userList.value.findIndex(u => u.id === form.value.id)
-      if (index !== -1) {
-        userList.value[index] = { 
-          ...userList.value[index], 
-          username: form.value.username, 
-          realName: form.value.realName, 
-          phone: form.value.phone, 
-          email: form.value.email, 
-          role: form.value.role 
-        }
-      }
-      alert('更新成功')
-    } else {
-      const newUser = { 
-        id: Date.now(), 
-        username: form.value.username, 
-        realName: form.value.realName, 
-        role: form.value.role, 
-        phone: form.value.phone, 
-        email: form.value.email 
-      }
-      userList.value.push(newUser)
-      total.value++
-      alert('添加成功')
-    }
+    await apiFetch(`${API_BASE}/users`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        username: form.value.username,
+        real_name: form.value.realName,
+        password: form.value.password,
+        role: form.value.role,
+        phone: form.value.phone,
+        email: form.value.email
+      })
+    })
+    alert('添加成功')
     closeModal()
     loadUsers()
   } catch (err) {
@@ -322,26 +298,20 @@ function closePasswordModal() {
 }
 
 async function updatePassword() {
-  if (!passwordForm.value.adminKey) {
-    alert('请输入管理员密钥')
-    return
-  }
-  if (!passwordForm.value.newPassword) {
-    alert('请输入新密码')
-    return
-  }
-  if (passwordForm.value.newPassword !== passwordForm.value.confirmPassword) {
-    alert('两次输入的密码不一致')
-    return
-  }
-  
+  if (!passwordForm.value.adminKey) { alert('请输入管理员密钥'); return }
+  if (!passwordForm.value.newPassword) { alert('请输入新密码'); return }
+  if (passwordForm.value.newPassword !== passwordForm.value.confirmPassword) { alert('两次输入的密码不一致'); return }
   passwordLoading.value = true
   try {
-    // TODO: 验证管理员密钥接口
-    if (passwordForm.value.adminKey !== 'admin123') {
-      alert('管理员密钥错误')
-      return
-    }
+    await apiFetch(`${API_BASE}/change_password`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        id: currentUser.value.id,
+        admin_key: passwordForm.value.adminKey,
+        new_password: passwordForm.value.newPassword
+      })
+    })
     alert('密码修改成功')
     closePasswordModal()
   } catch (err) {
@@ -364,12 +334,14 @@ function closeRoleModal() {
 async function updateRole() {
   roleLoading.value = true
   try {
-    const index = userList.value.findIndex(u => u.id === currentUser.value.id)
-    if (index !== -1) {
-      userList.value[index].role = roleForm.value.role
-    }
+    await apiFetch(`${API_BASE}/update_role`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ id: currentUser.value.id, role: roleForm.value.role })
+    })
     alert('角色修改成功')
     closeRoleModal()
+    loadUsers()
   } catch (err) {
     alert(err.message)
   } finally {
@@ -380,13 +352,13 @@ async function updateRole() {
 async function deleteUser(user) {
   if (!confirm(`确定删除用户 ${user.username} 吗？`)) return
   try {
-    if (user.username === '111' || user.username === 'user1') {
-      alert('固定账号不能删除')
-      return
-    }
-    userList.value = userList.value.filter(u => u.id !== user.id)
-    total.value--
+    await apiFetch(`${API_BASE}/delete_user`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ id: user.id })
+    })
     alert('删除成功')
+    loadUsers()
   } catch (err) {
     alert(err.message)
   }

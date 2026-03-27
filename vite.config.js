@@ -17,7 +17,8 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/tl': 'http://localhost:8000'
+      '/tl': 'http://localhost:8000',
+      '/auth': 'http://localhost:8000'
     }
   }
 })

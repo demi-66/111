@@ -46,9 +46,31 @@
       </div>
 
       <!-- 建议结果 -->
-      <div v-if="suggestionText" class="result-section">
+      <div v-if="suggestionText || suggestionRaw.length" class="result-section">
         <div class="section-title">采购建议</div>
-        <div class="suggestion-text">{{ suggestionText }}</div>
+        <div class="suggestion-text" style="white-space:pre-wrap">{{ suggestionText }}</div>
+        <div v-if="suggestionRaw.length" style="margin-top:16px">
+          <div class="section-title" style="font-size:14px;margin-bottom:8px">原始数据</div>
+          <table class="raw-table">
+            <thead>
+              <tr>
+                <th>仓库</th><th>冶炼厂</th><th>品类</th>
+                <th>需求(吨)</th><th>报价(元/吨)</th><th>运费(元/吨)</th><th>综合成本(元/吨)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(r, i) in suggestionRaw" :key="i">
+                <td>{{ r['仓库'] }}</td>
+                <td>{{ r['冶炼厂'] }}</td>
+                <td>{{ r['品类'] }}</td>
+                <td>{{ r['需求吨数'] }}</td>
+                <td>{{ r['报价(元/吨)'] ?? '—' }}</td>
+                <td>{{ r['运费(元/吨)'] ?? '—' }}</td>
+                <td>{{ r['综合成本(元/吨)'] ?? '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -196,6 +218,7 @@ const tempDemands = ref({})
 
 // 建议结果
 const suggestionText = ref('')
+const suggestionRaw = ref([])
 const suggestionLoading = ref(false)
 
 // ==================== 辅助函数 ====================
@@ -403,6 +426,7 @@ async function getSuggestions() {
     const data = await res.json()
     if (data.code === 200) {
       suggestionText.value = data.data?.suggestion || '暂无建议'
+      suggestionRaw.value = data.data?.raw || []
     } else {
       alert(data.msg || '获取建议失败')
     }
@@ -752,12 +776,18 @@ onMounted(() => {
   border-radius: 6px;
   font-size: 15px;
 }
-.demand-input:focus {
-  outline: none;
-  border-color: #2e7d32;
+.raw-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  border: 1px solid #e8e8e8;
 }
-.unit {
-  font-size: 14px;
-  color: #999;
+.raw-table th, .raw-table td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e8e8;
+  border-right: 1px solid #e8e8e8;
 }
+.raw-table th:last-child, .raw-table td:last-child { border-right: none; }
+.raw-table th { background: #fafafa; font-weight: 500; }
 </style>
