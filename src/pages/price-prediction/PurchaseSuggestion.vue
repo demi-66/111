@@ -617,7 +617,10 @@ onMounted(() => {
   flex-direction: column;
 }
 .modal-container.modal-large {
-  max-width: 620px;
+  max-width: 500px;
+  width: 90%;
+  max-height: 70vh;
+  min-height: 400px;
 }
 .modal-header {
   padding: 18px 24px;
@@ -674,18 +677,30 @@ onMounted(() => {
 }
 .search-input {
   width: 100%;
-  padding: 12px 14px;
+  padding: 10px 8px;
   border: 1px solid #d9d9d9;
   border-radius: 6px;
-  font-size: 15px;
+  font-size: 14px;
   margin-bottom: 18px;
 }
 .checkbox-group-modal {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   max-height: 320px;
   overflow-y: auto;
+  padding-right: 8px;
+}
+.checkbox-group-modal::-webkit-scrollbar {
+  width: 6px;
+}
+.checkbox-group-modal::-webkit-scrollbar-track {
+  background: #f0f0f0;
+  border-radius: 3px;
+}
+.checkbox-group-modal::-webkit-scrollbar-thumb {
+  background: #c0c0c0;
+  border-radius: 3px;
 }
 .checkbox-group {
   display: flex;
