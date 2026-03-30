@@ -16,7 +16,8 @@
           <div class="select-row">
             <div class="select-label required">仓库：</div>
             <div class="select-box" @click="openWarehouseModal">
-              <span class="select-placeholder">点击选择仓库</span>
+              <span v-if="!selectedWarehouseIds.length" class="select-placeholder">点击选择仓库</span>
+              <span v-else class="select-value">已选择 {{ selectedWarehouseIds.length }} 个仓库</span>
             </div>
           </div>
           <div v-if="selectedWarehouseIds.length" class="tags-area">
@@ -29,7 +30,8 @@
           <div class="select-row">
             <div class="select-label required">冶炼厂：</div>
             <div class="select-box" @click="openSmelterModal">
-              <span class="select-placeholder">点击选择冶炼厂</span>
+              <span v-if="!selectedSmelterIds.length" class="select-placeholder">点击选择冶炼厂</span>
+              <span v-else class="select-value">已选择 {{ selectedSmelterIds.length }} 个冶炼厂</span>
             </div>
           </div>
           <div v-if="selectedSmelterIds.length" class="smelter-list">
@@ -46,11 +48,11 @@
 
           <div class="form-actions">
             <button class="btn-primary" :disabled="!hasDemands || suggestionLoading" @click="openSummaryModal">
-              <span class="btn-icon">📊</span>
+              <span class="btn-icon"></span>
               {{ suggestionLoading ? '计算中...' : '获取采购建议' }}
             </button>
             <button class="btn-outline" @click="resetAll">
-              <span class="btn-icon">🔄</span>
+              <span class="btn-icon"></span>
               重置
             </button>
           </div>
@@ -71,7 +73,7 @@
                 <div class="summary-smelter-name">{{ getSmelterName(smelterId) }}</div>
                 <div class="summary-categories">
                   <div v-for="(item, idx) in getSmelterConfig(smelterId)" :key="idx" class="summary-category-item">
-                    {{ item.categoryName }}:{{ item.demand }}吨
+                    {{ item.categoryName }}: {{ item.demand }}吨
                   </div>
                   <div v-if="!getSmelterConfig(smelterId).length" class="empty-config">
                     未配置
@@ -98,11 +100,11 @@
           <div class="modal-body">
             <input v-model="warehouseSearch" type="text" placeholder="搜索仓库..." class="search-input">
             <div class="checkbox-group-modal">
-              <label v-for="w in warehouses" :key="w.id" class="checkbox-item">
+              <label v-for="w in filteredWarehouses" :key="w.id" class="checkbox-item">
                 <input type="checkbox" :value="w.id" v-model="tempSelectedWarehouseIds">
                 {{ w.name }}
               </label>
-              <div v-if="!warehouses.length" class="empty-hint">暂无数据</div>
+              <div v-if="!filteredWarehouses.length" class="empty-hint">暂无数据</div>
             </div>
           </div>
           <div class="modal-footer">
@@ -123,11 +125,11 @@
           <div class="modal-body">
             <input v-model="smelterSearch" type="text" placeholder="搜索冶炼厂..." class="search-input">
             <div class="checkbox-group-modal">
-              <label v-for="s in smelters" :key="s.id" class="checkbox-item">
+              <label v-for="s in filteredSmelters" :key="s.id" class="checkbox-item">
                 <input type="checkbox" :value="s.id" v-model="tempSelectedSmelterIds">
                 {{ s.name }}
               </label>
-              <div v-if="!smelters.length" class="empty-hint">暂无数据</div>
+              <div v-if="!filteredSmelters.length" class="empty-hint">暂无数据</div>
             </div>
           </div>
           <div class="modal-footer">
@@ -182,37 +184,7 @@
       </div>
       <div class="result-body">
         <div class="result-content">
-          <div class="result-label">采购建议</div>
           <div class="result-text">{{ suggestionText }}</div>
-        </div>
-        <div v-if="suggestionRaw.length" class="raw-section">
-          <div class="raw-title">原始数据</div>
-          <div class="table-wrapper">
-            <table class="raw-table">
-              <thead>
-                <tr>
-                  <th>仓库</th>
-                  <th>冶炼厂</th>
-                  <th>品类</th>
-                  <th>需求(吨)</th>
-                  <th>报价(元/吨)</th>
-                  <th>运费(元/吨)</th>
-                  <th>综合成本(元/吨)</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="(r, i) in suggestionRaw" :key="i">
-                  <td class="number">{{ r.仓库 }}</td>
-                  <td class="number">{{ r.冶炼厂 }}</td>
-                  <td class="number">{{ r.品类 }}</td>
-                  <td class="number">{{ r.需求吨数 }}</td>
-                  <td class="number">{{ r['报价(元/吨)'] || '—' }}</td>
-                  <td class="number">{{ r['运费(元/吨)'] || '—' }}</td>
-                  <td class="number total">{{ r['综合成本(元/吨)'] || '—' }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
         </div>
         <button class="btn-back" @click="backToQuery">返回查询</button>
       </div>
@@ -250,21 +222,39 @@ const tempCategoryIds = ref([])
 const tempDemands = ref({})
 
 const suggestionText = ref('')
-const suggestionRaw = ref([])
 const suggestionLoading = ref(false)
+
+// 计算过滤后的仓库列表
+const filteredWarehouses = computed(() => {
+  if (!warehouseSearch.value) return warehouses.value
+  return warehouses.value.filter(w => 
+    w.name.toLowerCase().includes(warehouseSearch.value.toLowerCase())
+  )
+})
+
+// 计算过滤后的冶炼厂列表
+const filteredSmelters = computed(() => {
+  if (!smelterSearch.value) return smelters.value
+  return smelters.value.filter(s => 
+    s.name.toLowerCase().includes(smelterSearch.value.toLowerCase())
+  )
+})
 
 function getWarehouseName(id) {
   const w = warehouses.value.find(w => w.id === id)
   return w ? w.name : ''
 }
+
 function getSmelterName(id) {
   const s = smelters.value.find(s => s.id === id)
   return s ? s.name : ''
 }
+
 function getCategoryName(id) {
   const c = categories.value.find(c => c.id === id)
   return c ? c.name : ''
 }
+
 function getSmelterConfig(smelterId) {
   const config = smelterConfigs.value[smelterId]
   if (!config) return []
@@ -274,7 +264,61 @@ function getSmelterConfig(smelterId) {
     demand: demand
   }))
 }
-const hasDemands = computed(() => Object.keys(smelterConfigs.value).length > 0)
+
+const hasDemands = computed(() => {
+  return selectedSmelterIds.value.some(id => {
+    const config = smelterConfigs.value[id]
+    return config && Object.keys(config).length > 0
+  })
+})
+
+// 获取仓库列表
+async function fetchWarehouses() {
+  try {
+    const res = await fetch(`${API_BASE}/get_warehouses`)
+    const data = await res.json()
+    if (data.code === 200) {
+      warehouses.value = data.data.map(item => ({
+        id: item['仓库id'],
+        name: item['仓库名']
+      }))
+    }
+  } catch (err) {
+    console.error('获取仓库列表失败:', err)
+  }
+}
+
+// 获取冶炼厂列表
+async function fetchSmelters() {
+  try {
+    const res = await fetch(`${API_BASE}/get_smelters`)
+    const data = await res.json()
+    if (data.code === 200) {
+      smelters.value = data.data.map(item => ({
+        id: item['冶炼厂id'],
+        name: item['冶炼厂']
+      }))
+    }
+  } catch (err) {
+    console.error('获取冶炼厂列表失败:', err)
+  }
+}
+
+// 获取品类列表
+async function fetchCategories() {
+  try {
+    const res = await fetch(`${API_BASE}/get_categories`)
+    const data = await res.json()
+    if (data.code === 200) {
+      categories.value = data.data.map(item => ({
+        id: item['品类id'],
+        name: item['品类名']
+      }))
+    }
+  } catch (err) {
+    console.error('获取品类列表失败:', err)
+  }
+}
 
 function backToQuery() {
   showResult.value = false
@@ -295,9 +339,11 @@ function openSummaryModal() {
   }
   summaryModalVisible.value = true
 }
+
 function closeSummaryModal() {
   summaryModalVisible.value = false
 }
+
 async function confirmAndGetSuggestions() {
   closeSummaryModal()
   await getSuggestions()
@@ -308,13 +354,16 @@ function openWarehouseModal() {
   warehouseSearch.value = ''
   warehouseModalVisible.value = true
 }
+
 function closeWarehouseModal() {
   warehouseModalVisible.value = false
 }
+
 function confirmWarehouseSelection() {
   selectedWarehouseIds.value = [...tempSelectedWarehouseIds.value]
   closeWarehouseModal()
 }
+
 function removeWarehouse(id) {
   selectedWarehouseIds.value = selectedWarehouseIds.value.filter(i => i !== id)
 }
@@ -324,9 +373,11 @@ function openSmelterModal() {
   smelterSearch.value = ''
   smelterModalVisible.value = true
 }
+
 function closeSmelterModal() {
   smelterModalVisible.value = false
 }
+
 function confirmSmelterSelection() {
   selectedSmelterIds.value = [...tempSelectedSmelterIds.value]
   closeSmelterModal()
@@ -342,10 +393,12 @@ function configureSmelter(smelterId) {
     configModalVisible.value = true
   }
 }
+
 function closeConfigModal() {
   configModalVisible.value = false
   currentSmelter.value = null
 }
+
 function saveConfig() {
   if (!tempCategoryIds.value.length) {
     alert('请至少选择一个品类')
@@ -377,6 +430,7 @@ async function getSuggestions() {
     alert('请选择仓库')
     return
   }
+  
   const demands = []
   for (const smelterId of selectedSmelterIds.value) {
     const config = smelterConfigs.value[smelterId]
@@ -390,10 +444,12 @@ async function getSuggestions() {
       }
     }
   }
+  
   if (demands.length === 0) {
     alert('请先配置需求')
     return
   }
+  
   suggestionLoading.value = true
 
   try {
@@ -407,8 +463,8 @@ async function getSuggestions() {
     })
     const data = await res.json()
     if (data.code === 200) {
+      // 直接使用后端返回的文本内容，不做任何包装
       suggestionText.value = data.data?.suggestion || '暂无建议'
-      suggestionRaw.value = data.data?.raw || []
       showResult.value = true
     } else {
       alert(data.msg || '获取建议失败')
@@ -421,7 +477,9 @@ async function getSuggestions() {
 }
 
 onMounted(() => {
-  // TODO: 获取仓库、冶炼厂、品类数据
+  fetchWarehouses()
+  fetchSmelters()
+  fetchCategories()
 })
 </script>
 
@@ -532,6 +590,11 @@ onMounted(() => {
 .select-placeholder {
   color: #a0aec0;
   font-size: 13px;
+}
+.select-value {
+  color: #2e7d32;
+  font-size: 13px;
+  font-weight: 500;
 }
 .tags-area {
   display: flex;
@@ -722,14 +785,19 @@ onMounted(() => {
   border-radius: 28px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.1);
   width: 100%;
-  max-width: 1100px;
+  max-width: 1400px;
   margin: 0 auto;
   overflow: hidden;
+  height: 75vh;
+  display: flex;
+  flex-direction: column;
+  margin-top: -70px;
 }
 .result-header {
   padding: 28px 44px;
   background: linear-gradient(135deg, #f8f9fc 0%, #fff 100%);
   border-bottom: 1px solid #e8ecef;
+  flex-shrink: 0;
 }
 .result-header h2 {
   font-size: 32px;
@@ -738,21 +806,14 @@ onMounted(() => {
   margin: 0;
 }
 .result-body {
+  flex: 1;
   padding: 36px 44px;
+  overflow-y: auto;
 }
 .result-content {
   background: #f8fafc;
   border-radius: 20px;
   padding: 28px;
-  margin-bottom: 28px;
-}
-.result-label {
-  font-size: 15px;
-  font-weight: 500;
-  color: #2e7d32;
-  margin-bottom: 16px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #e2e8f0;
 }
 .result-text {
   font-size: 16px;
@@ -760,54 +821,10 @@ onMounted(() => {
   color: #2c3e50;
   white-space: pre-wrap;
 }
-.raw-section {
-  margin-top: 20px;
-}
-.raw-title {
-  font-size: 14px;
-  font-weight: 500;
-  color: #2e7d32;
-  margin-bottom: 12px;
-}
-.table-wrapper {
-  overflow-x: auto;
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
-}
-.raw-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-}
-.raw-table th,
-.raw-table td {
-  padding: 10px 12px;
-  text-align: left;
-  border-bottom: 1px solid #e2e8f0;
-  border-right: 1px solid #e2e8f0;
-}
-.raw-table th:last-child,
-.raw-table td:last-child {
-  border-right: none;
-}
-.raw-table tr:last-child td {
-  border-bottom: none;
-}
-.raw-table th {
-  background: #fafafa;
-  font-weight: 500;
-}
-.number {
-  text-align: right;
-}
-.total {
-  color: #e67e22;
-  font-weight: 600;
-}
 .btn-back {
   display: block;
   width: 160px;
-  margin: 0 auto;
+  margin: 24px auto 0;
   background: #2e7d32;
   border: none;
   padding: 10px 24px;
@@ -960,5 +977,18 @@ onMounted(() => {
   padding: 20px;
   text-align: center;
   color: #a0aec0;
+}
+.section-subtitle {
+  font-size: 14px;
+  font-weight: 500;
+  color: #2c3e50;
+  margin-bottom: 12px;
+}
+.checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 200px;
+  overflow-y: auto;
 }
 </style>
