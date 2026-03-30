@@ -63,8 +63,12 @@
               <label>价格类型</label>
               <div class="price-type-wrapper">
                 <select v-model="selectedPriceType" class="price-type-select">
-                  <option value="standard">标准价</option>
-                  <option value="3percent">3%</option>
+                  <option :value="null">普通价（不含税）</option>
+                  <option value="1pct">含1%增值税</option>
+                  <option value="3pct">含3%增值税</option>
+                  <option value="13pct">含13%增值税</option>
+                  <option value="normal_invoice">普通发票价</option>
+                  <option value="reverse_invoice">反向发票价</option>
                 </select>
               </div>
             </div>
@@ -171,8 +175,38 @@
       </div>
       <div class="result-body">
         <div class="result-content">
-          <div class="result-label">查询结果</div>
-          <div class="result-text">{{ resultSuggestion }}</div>
+          <div class="result-label">查询结果（共 {{ resultRows.length }} 条）</div>
+          <div class="table-scroll">
+            <table class="result-table">
+              <thead>
+                <tr>
+                  <th>仓库</th>
+                  <th>冶炼厂</th>
+                  <th>品类</th>
+                  <th>价格类型</th>
+                  <th>运费(元/吨)</th>
+                  <th>报价(元/吨)</th>
+                  <th>报价来源</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, i) in resultRows" :key="i" :class="{ unavailable: row['报价来源'] === 'unavailable' }">
+                  <td>{{ row['仓库'] }}</td>
+                  <td>{{ row['冶炼厂'] }}</td>
+                  <td>{{ row['品类'] }}</td>
+                  <td>{{ row['price_type'] }}</td>
+                  <td>{{ row['运费'] ?? '—' }}</td>
+                  <td>{{ row['报价'] != null ? row['报价'] : '—' }}</td>
+                  <td>
+                    <span class="source-badge" :class="row['报价来源']">{{ row['报价来源'] }}</span>
+                  </td>
+                </tr>
+                <tr v-if="!resultRows.length">
+                  <td colspan="7" class="empty-hint">暂无数据</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
         <button class="btn-back" @click="backToQuery">返回查询</button>
       </div>
@@ -187,7 +221,7 @@ const API_BASE = '/tl'
 
 // 页面状态
 const showResult = ref(false)
-const resultSuggestion = ref('')
+const resultRows = ref([])
 
 // 数据
 const warehouses = ref([])
@@ -216,7 +250,7 @@ const selectedCategoryIds = ref([])
 const queryLoading = ref(false)
 
 // 价格类型
-const selectedPriceType = ref('standard')
+const selectedPriceType = ref(null)
 
 // 过滤
 const filteredWarehouses = computed(() => {
@@ -306,7 +340,7 @@ function resetQuery() {
   selectedWarehouseIds.value = []
   selectedSmelterIds.value = []
   selectedCategoryIds.value = []
-  selectedPriceType.value = 'standard'
+  selectedPriceType.value = null
 }
 
 function backToQuery() {
@@ -343,7 +377,7 @@ async function queryComparison() {
     })
     const data = await res.json()
     if (data.code === 200 && data.data) {
-      resultSuggestion.value = data.data.suggestion || data.data || '暂无建议'
+      resultRows.value = data.data
       showResult.value = true
     } else {
       alert(data.msg || '查询失败')
@@ -812,6 +846,50 @@ onMounted(() => {
   line-height: 1.6;
   color: #2c3e50;
   white-space: pre-wrap;
+}
+.table-scroll {
+  overflow-x: auto;
+}
+.result-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.result-table th,
+.result-table td {
+  padding: 10px 14px;
+  text-align: left;
+  border-bottom: 1px solid #e2e8f0;
+  white-space: nowrap;
+}
+.result-table th {
+  background: #f0f4f8;
+  font-weight: 600;
+  color: #2c3e50;
+}
+.result-table tr.unavailable td {
+  color: #aaa;
+}
+.source-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  background: #f0f4f8;
+  color: #555;
+}
+.source-badge.direct {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+.source-badge.unavailable {
+  background: #fff0f0;
+  color: #e53935;
+}
+.empty-hint {
+  text-align: center;
+  padding: 24px;
+  color: #a0aec0;
 }
 .btn-back {
   display: block;

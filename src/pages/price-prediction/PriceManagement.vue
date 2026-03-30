@@ -2,7 +2,10 @@
   <div class="price-management">
     <div class="card-header">
       <span>价格录入</span>
-      <button class="btn-mapping" @click="openMappingModal">品类映射表</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn-tax" @click="openTaxModal">税率管理</button>
+        <button class="btn-mapping" @click="openMappingModal">品类映射表</button>
+      </div>
     </div>
     <div class="card-body">
 
@@ -63,17 +66,22 @@
         <div v-if="detail.submitSuccess" class="success-msg" style="padding:4px 16px">{{ detail.submitSuccess }}</div>
           <table class="data-table">
             <thead>
-              <tr><th>品类名</th><th>价格(元/吨)</th><th>操作</th></tr>
+              <tr><th>品类名</th><th>普通价</th><th>1%增值税</th><th>3%增值税</th><th>13%增值税</th><th>普通发票</th><th>反向发票</th><th>操作</th></tr>
             </thead>
             <tbody>
               <tr v-for="(item, ii) in detail.items" :key="ii">
                 <td><input v-model="item['品类名']" type="text" /></td>
-                <td><input v-model.number="item['价格']" type="number" step="0.01" /></td>
+                <td><input v-model.number="item['价格']" type="number" step="0.01" placeholder="—" /></td>
+                <td><input v-model.number="item['价格_1pct增值税']" type="number" step="0.01" placeholder="—" /></td>
+                <td><input v-model.number="item['价格_3pct增值税']" type="number" step="0.01" placeholder="—" /></td>
+                <td><input v-model.number="item['价格_13pct增值税']" type="number" step="0.01" placeholder="—" /></td>
+                <td><input v-model.number="item['普通发票价格']" type="number" step="0.01" placeholder="—" /></td>
+                <td><input v-model.number="item['反向发票价格']" type="number" step="0.01" placeholder="—" /></td>
                 <td><button class="btn-del" @click="detail.items.splice(ii, 1)">删除</button></td>
               </tr>
             </tbody>
           </table>
-          <button class="btn-add row-add-btn" @click="detail.items.push({ '品类名': '', '价格': '' })">+ 新增品种</button>
+          <button class="btn-add row-add-btn" @click="detail.items.push({ '品类名': '', '价格': null, '价格_1pct增值税': null, '价格_3pct增值税': null, '价格_13pct增值税': null, '普通发票价格': null, '反向发票价格': null })">+ 新增品种</button>
         </div>
       </div>
 
@@ -146,6 +154,60 @@
     </div>
   </div>
 
+  <!-- 税率管理弹窗 -->
+  <div v-if="taxModalOpen" class="modal-mask" @click.self="closeTaxModal">
+    <div class="modal-box modal-box-lg">
+      <div class="modal-header">
+        <span>税率管理</span>
+        <button class="modal-close" @click="closeTaxModal">×</button>
+      </div>
+      <div class="modal-body">
+        <div v-if="taxLoading" class="modal-loading">加载中...</div>
+        <div v-else>
+          <table class="data-table" style="margin-bottom:16px">
+            <thead>
+              <tr><th>冶炼厂</th><th>税率类型</th><th>税率值</th><th>操作</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="(row, i) in taxRows" :key="i">
+                <td>{{ row.factory_name }}</td>
+                <td>{{ row.tax_type }}</td>
+                <td>{{ (row.tax_rate * 100).toFixed(0) }}%</td>
+                <td>
+                  <button class="btn-del" @click="deleteTaxRate(row)">删除</button>
+                </td>
+              </tr>
+              <tr v-if="!taxRows.length">
+                <td colspan="4" style="text-align:center;color:#aaa;padding:16px">暂无数据</td>
+              </tr>
+            </tbody>
+          </table>
+          <div style="font-weight:600;margin-bottom:12px;font-size:13px">新增/更新税率</div>
+          <div class="tax-add-row">
+            <select v-model="taxForm.factory_id" style="flex:2;padding:6px 8px;border:1px solid #d9d9d9;border-radius:6px;font-size:13px">
+              <option value="">选择冶炼厂</option>
+              <option v-for="s in smelters" :key="s.id" :value="s.id">{{ s.name }}</option>
+            </select>
+            <select v-model="taxForm.tax_type" style="flex:1;padding:6px 8px;border:1px solid #d9d9d9;border-radius:6px;font-size:13px">
+              <option value="1pct">1%</option>
+              <option value="3pct">3%</option>
+              <option value="13pct">13%</option>
+            </select>
+            <input v-model.number="taxForm.tax_rate_pct" type="number" step="0.01" min="0" max="100" placeholder="如：3（表示3%）" style="flex:1;padding:6px 8px;border:1px solid #d9d9d9;border-radius:6px;font-size:13px" />
+            <button class="btn-primary btn-sm" :disabled="taxSaving" @click="upsertTaxRate">
+              <span v-if="taxSaving" class="spinner-sm"></span>添加
+            </button>
+          </div>
+          <div v-if="taxError" class="error-msg" style="margin-top:8px">{{ taxError }}</div>
+          <div v-if="taxSuccess" class="success-msg" style="margin-top:8px">{{ taxSuccess }}</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-outline" @click="closeTaxModal">关闭</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 品类映射表弹窗 -->
   <div v-if="mappingModalOpen" class="modal-mask" @click.self="closeMappingModal">
     <div class="modal-box">
@@ -196,7 +258,7 @@ const saveError = ref('')
 const saveSuccess = ref('')
 
 // 识别结果
-const recognizedDetails = ref([])  // detail: { factory_name, image, date, items: [{品类名, 价格}], submitting, submitError, submitSuccess }
+const recognizedDetails = ref([])  // detail: { factory_name, image, date, full_data, items: [{品类名, 价格_1pct增值税, 价格_3pct增值税, 价格_13pct增值税, 普通发票价格, 反向发票价格}], submitting, submitError, submitSuccess }
 
 // 下拉数据
 const warehouses = ref([])
@@ -252,6 +314,15 @@ function clearPreviewUrls() {
   previewUrls.value = []
 }
 
+function parseDateFromChinese(dateStr) {
+  if (!dateStr) return ''
+  // 匹配 "2026年2月25日" 或 "2026年02月25日"
+  const match = dateStr.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/)
+  if (!match) return ''
+  const [, year, month, day] = match
+  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+}
+
 async function recognizePriceTable() {
   if (!selectedFiles.value.length) { recognizeError.value = '请先选择图片'; return }
   recognizeLoading.value = true
@@ -265,18 +336,31 @@ async function recognizePriceTable() {
     let data
     try { data = JSON.parse(text) } catch { throw new Error(`响应格式错误：${text.slice(0, 100)}`) }
     if (data.code === 200) {
-      recognizedDetails.value = (data.data.details || []).map(d => ({
-        factory_name: d.factory_name,
-        image: d.image,
-        date: d.date || '',
-        items: (d.items || []).map(item => ({
-          '品类名': item['品类名'],
-          '价格': item['价格']
-        })),
-        submitting: false,
-        submitError: '',
-        submitSuccess: ''
-      }))
+      recognizedDetails.value = (data.data.details || []).map(d => {
+        // 按冶炼厂名归组 items
+        const firstItem = (d.items || [])[0] || {}
+        return {
+          factory_name: firstItem['冶炼厂名'] || '',
+          image: d.image,
+          date: parseDateFromChinese(d.full_data?.execution_date || ''),
+          full_data: d.full_data || null,
+          items: (d.items || []).map(item => ({
+            '品类名': item['品类名'],
+            '冶炼厂名': item['冶炼厂名'],
+            '冶炼厂id': item['冶炼厂id'],
+            '品类id': item['品类id'],
+            '价格': item['价格'] ?? null,
+            '价格_1pct增值税': item['价格_1pct增值税'] ?? null,
+            '价格_3pct增值税': item['价格_3pct增值税'] ?? null,
+            '价格_13pct增值税': item['价格_13pct增值税'] ?? null,
+            '普通发票价格': item['普通发票价格'] ?? null,
+            '反向发票价格': item['反向发票价格'] ?? null,
+          })),
+          submitting: false,
+          submitError: '',
+          submitSuccess: ''
+        }
+      })
     } else {
       throw new Error(data.msg || '识别失败')
     }
@@ -289,15 +373,22 @@ async function recognizePriceTable() {
 
 function buildItems(details) {
   const allItems = []
+  const priceKeys = ['价格', '价格_1pct增值税', '价格_3pct增值税', '价格_13pct增值税', '普通发票价格', '反向发票价格']
   for (const detail of details) {
     for (const item of detail.items) {
-      allItems.push({
-        '冶炼厂名': detail.factory_name,
-        '冶炼厂id': null,
+      const entry = {
+        '冶炼厂名': item['冶炼厂名'] || detail.factory_name,
+        '冶炼厂id': item['冶炼厂id'] ?? null,
         '品类名': item['品类名'],
-        '品类id': null,
-        '价格': Number(item['价格'])
-      })
+        '品类id': item['品类id'] ?? null,
+      }
+      for (const k of priceKeys) {
+        const v = item[k]
+        if (v !== null && v !== '' && v !== undefined) {
+          entry[k] = Number(v)
+        }
+      }
+      allItems.push(entry)
     }
   }
   return allItems
@@ -306,17 +397,20 @@ function buildItems(details) {
 function validateDetail(detail) {
   if (!detail.date) return `冶炼厂"${detail.factory_name}"缺少报价日期`
   for (const item of detail.items) {
-    if (item['价格'] === '' || item['价格'] === null || item['价格'] === undefined) return `冶炼厂"${detail.factory_name}"有品种缺少价格`
+    const hasAnyPrice = ['价格', '价格_1pct增值税', '价格_3pct增值税', '价格_13pct增值税', '普通发票价格', '反向发票价格']
+      .some(k => item[k] !== null && item[k] !== '' && item[k] !== undefined)
+    if (!hasAnyPrice) return `冶炼厂"${detail.factory_name}"的品类"${item['品类名']}"缺少价格`
   }
   return null
 }
 
 async function postConfirm(details) {
   const priceDate = details[0]?.date || ''
+  const full_data = details[0]?.full_data ?? null
   const res = await fetch(`${API_BASE}/confirm_price_table`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ '报价日期': priceDate, '数据': buildItems(details) })
+    body: JSON.stringify({ '报价日期': priceDate, 'full_data': full_data, '数据': buildItems(details) })
   })
   const text = await res.text()
   if (!text) throw new Error(`服务器无响应（HTTP ${res.status}）`)
@@ -450,6 +544,91 @@ async function submitAddWarehouse() {
     addWarehouseIsNew.value = false
   } finally {
     addWarehouseLoading.value = false
+  }
+}
+
+// ---- 税率管理 ----
+const taxModalOpen = ref(false)
+const taxLoading = ref(false)
+const taxSaving = ref(false)
+const taxError = ref('')
+const taxSuccess = ref('')
+const taxRows = ref([])
+const taxForm = ref({ factory_id: '', tax_type: '3pct', tax_rate_pct: '' })
+
+async function openTaxModal() {
+  taxModalOpen.value = true
+  taxError.value = ''
+  taxSuccess.value = ''
+  await loadTaxRates()
+}
+
+function closeTaxModal() {
+  taxModalOpen.value = false
+}
+
+async function loadTaxRates() {
+  taxLoading.value = true
+  try {
+    const res = await fetch(`${API_BASE}/get_tax_rates`)
+    const data = await res.json()
+    if (data.code === 200) taxRows.value = data.data
+    else throw new Error(data.msg || '加载失败')
+  } catch (err) {
+    taxError.value = err.message
+  } finally {
+    taxLoading.value = false
+  }
+}
+
+async function upsertTaxRate() {
+  if (!taxForm.value.factory_id) { taxError.value = '请选择冶炼厂'; return }
+  if (taxForm.value.tax_rate_pct === '' || taxForm.value.tax_rate_pct === null) { taxError.value = '请输入税率'; return }
+  taxError.value = ''
+  taxSuccess.value = ''
+  taxSaving.value = true
+  try {
+    const res = await fetch(`${API_BASE}/upsert_tax_rates`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items: [{
+          factory_id: taxForm.value.factory_id,
+          tax_type: taxForm.value.tax_type,
+          tax_rate: Number(taxForm.value.tax_rate_pct) / 100
+        }]
+      })
+    })
+    const data = await res.json()
+    if (data.code === 200) {
+      taxSuccess.value = data.msg || '保存成功'
+      taxForm.value.factory_id = ''
+      taxForm.value.tax_rate_pct = ''
+      await loadTaxRates()
+    } else {
+      throw new Error(data.msg || '保存失败')
+    }
+  } catch (err) {
+    taxError.value = err.message
+  } finally {
+    taxSaving.value = false
+  }
+}
+
+async function deleteTaxRate(row) {
+  taxError.value = ''
+  taxSuccess.value = ''
+  try {
+    const res = await fetch(`${API_BASE}/delete_tax_rate?factory_id=${row.factory_id}&tax_type=${row.tax_type}`, { method: 'DELETE' })
+    const data = await res.json()
+    if (data.code === 200) {
+      taxSuccess.value = data.msg || '删除成功'
+      await loadTaxRates()
+    } else {
+      throw new Error(data.msg || '删除失败')
+    }
+  } catch (err) {
+    taxError.value = err.message
   }
 }
 
@@ -849,6 +1028,27 @@ async function saveMappingTable() {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+.btn-tax {
+  background: none;
+  border: 1px solid #e65100;
+  color: #e65100;
+  padding: 4px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.btn-tax:hover {
+  background: #fff3e0;
+}
+.modal-box-lg {
+  width: 700px;
+}
+.tax-add-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 .btn-mapping {
   background: none;

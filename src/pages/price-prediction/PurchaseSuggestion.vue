@@ -28,6 +28,18 @@
           </div>
 
           <div class="select-row">
+            <div class="select-label required">价格类型：</div>
+            <select v-model="selectedPriceType" class="price-type-select">
+              <option :value="null">普通价（不含税）</option>
+              <option value="1pct">含1%增值税</option>
+              <option value="3pct">含3%增值税</option>
+              <option value="13pct">含13%增值税</option>
+              <option value="normal_invoice">普通发票价</option>
+              <option value="reverse_invoice">反向发票价</option>
+            </select>
+          </div>
+
+          <div class="select-row">
             <div class="select-label required">冶炼厂：</div>
             <div class="select-box" @click="openSmelterModal">
               <span v-if="!selectedSmelterIds.length" class="select-placeholder">点击选择冶炼厂</span>
@@ -223,6 +235,7 @@ const tempDemands = ref({})
 
 const suggestionText = ref('')
 const suggestionLoading = ref(false)
+const selectedPriceType = ref(null)
 
 // 计算过滤后的仓库列表
 const filteredWarehouses = computed(() => {
@@ -423,6 +436,7 @@ function resetAll() {
   selectedWarehouseIds.value = []
   selectedSmelterIds.value = []
   smelterConfigs.value = {}
+  selectedPriceType.value = null
 }
 
 async function getSuggestions() {
@@ -458,7 +472,8 @@ async function getSuggestions() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         warehouse_ids: selectedWarehouseIds.value,
-        demands: demands
+        demands: demands,
+        price_type: selectedPriceType.value
       })
     })
     const data = await res.json()
@@ -595,6 +610,21 @@ onMounted(() => {
   color: #2e7d32;
   font-size: 13px;
   font-weight: 500;
+}
+.price-type-select {
+  width: 220px;
+  padding: 8px 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  min-height: 44px;
+  font-size: 13px;
+}
+.price-type-select:focus {
+  outline: none;
+  border-color: #2e7d32;
+  box-shadow: 0 0 0 3px rgba(46, 125, 50, 0.1);
 }
 .tags-area {
   display: flex;
