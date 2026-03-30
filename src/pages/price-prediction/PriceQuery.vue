@@ -1,198 +1,358 @@
 <template>
-  <div class="price-query">
-    <div class="card-header">比价查询</div>
-    <div class="card-body">
-      <div class="query-form">
-        <div class="form-row">
-          <div class="form-item">
-            <label>选择仓库</label>
-            <div class="multi-select" :class="{ open: warehouseOpen }">
-              <div class="ms-trigger" @click.stop="toggleDropdown('warehouse')" ref="warehouseTrigger">
-                <span v-if="queryParams.warehouseIds.length" class="ms-tags">
-                  <span v-for="id in queryParams.warehouseIds" :key="id" class="ms-tag">
-                    {{ warehouses.find(w => w.id === id)?.name }}
-                    <i @click.stop="toggleId(queryParams.warehouseIds, id)">×</i>
-                  </span>
-                </span>
-                <span v-else class="ms-placeholder">请选择仓库</span>
-                <span class="ms-arrow">▾</span>
-              </div>
-              <Teleport to="body">
-                <div v-if="warehouseOpen" class="ms-dropdown-portal" :style="dropdownStyle.warehouse" @click.stop>
-                  <label v-for="w in warehouses" :key="w.id" class="ms-option">
-                    <input type="checkbox" :value="w.id" v-model="queryParams.warehouseIds" />
-                    {{ w.name }}
-                  </label>
-                  <div v-if="!warehouses.length" class="ms-empty">暂无数据</div>
-                </div>
-              </Teleport>
-            </div>
-          </div>
-          <div class="form-item">
-            <label>选择冶炼厂</label>
-            <div class="multi-select" :class="{ open: smelterOpen }">
-              <div class="ms-trigger" @click.stop="toggleDropdown('smelter')" ref="smelterTrigger">
-                <span v-if="queryParams.smelterIds.length" class="ms-tags">
-                  <span v-for="id in queryParams.smelterIds" :key="id" class="ms-tag">
-                    {{ smelters.find(s => s.id === id)?.name }}
-                    <i @click.stop="toggleId(queryParams.smelterIds, id)">×</i>
-                  </span>
-                </span>
-                <span v-else class="ms-placeholder">请选择冶炼厂</span>
-                <span class="ms-arrow">▾</span>
-              </div>
-              <Teleport to="body">
-                <div v-if="smelterOpen" class="ms-dropdown-portal" :style="dropdownStyle.smelter" @click.stop>
-                  <label v-for="s in smelters" :key="s.id" class="ms-option">
-                    <input type="checkbox" :value="s.id" v-model="queryParams.smelterIds" />
-                    {{ s.name }}
-                  </label>
-                  <div v-if="!smelters.length" class="ms-empty">暂无数据</div>
-                </div>
-              </Teleport>
-            </div>
-          </div>
-          <div class="form-item">
-            <label>选择品类</label>
-            <div class="multi-select" :class="{ open: categoryOpen }">
-              <div class="ms-trigger" @click.stop="toggleDropdown('category')" ref="categoryTrigger">
-                <span v-if="queryParams.categoryIds.length" class="ms-tags">
-                  <span v-for="id in queryParams.categoryIds" :key="id" class="ms-tag">
-                    {{ masterCategories.find(c => c.id === id)?.name }}
-                    <i @click.stop="toggleId(queryParams.categoryIds, id)">×</i>
-                  </span>
-                </span>
-                <span v-else class="ms-placeholder">请选择品类</span>
-                <span class="ms-arrow">▾</span>
-              </div>
-              <Teleport to="body">
-                <div v-if="categoryOpen" class="ms-dropdown-portal" :style="dropdownStyle.category" @click.stop>
-                  <label v-for="c in masterCategories" :key="c.id" class="ms-option">
-                    <input type="checkbox" :value="c.id" v-model="queryParams.categoryIds" />
-                    {{ c.name }}
-                  </label>
-                  <div v-if="!masterCategories.length" class="ms-empty">暂无数据</div>
-                </div>
-              </Teleport>
-            </div>
-          </div>
-        </div>
-        <div class="form-actions">
-          <button class="btn-primary" :disabled="queryLoading" @click="queryComparison">{{ queryLoading ? '查询中...' : '查询' }}</button>
-          <button class="btn-outline" @click="resetQuery">重置</button>
-        </div>
+  <!-- 查询页面 -->
+  <div v-if="!showResult" class="price-query">
+    <div class="query-card">
+      <div class="card-header">
+        <h2>价格查询</h2>
+        <p class="subtitle">选择仓库、冶炼厂和品类进行比价分析</p>
       </div>
 
-      <div v-if="comparisonResults.length" class="result-section">
-        <div class="result-header">比价结果</div>
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>仓库</th>
-              <th>冶炼厂</th>
-              <th>品类</th>
-              <th>报价(元/吨)</th>
-              <th>运费(元/公里)</th>
-              <th>每车利润(元) <button class="sort-btn" @click="toggleProfitSort">{{ profitSort === 'desc' ? '↓' : profitSort === 'asc' ? '↑' : '↕' }}</button></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(item, idx) in sortedResults" :key="idx">
-              <td>{{ item.warehouse }}</td>
-              <td>{{ item.smelter }}</td>
-              <td>{{ item.category }}</td>
-              <td class="price">{{ item.price != null ? item.price : '—' }}</td>
-              <td class="price">{{ item.freight }}</td>
-              <td class="total">{{ item.profit != null ? item.profit : '—' }}</td>
-            </tr>
-          </tbody>
-        </table>
+      <div class="card-body">
+        <div class="query-section">
+          <div class="section-header">
+            <span class="section-dot"></span>
+            <span class="section-title">查询条件</span>
+          </div>
+
+          <div class="form-row two-cols">
+            <div class="form-item">
+              <label>仓库</label>
+              <div class="select-box" @click="openWarehouseModal">
+                <div class="selected-items">
+                  <span v-if="selectedWarehouseIds.length" class="selected-tag-wrapper">
+                    <span v-for="id in selectedWarehouseIds" :key="id" class="selected-tag">
+                      {{ getWarehouseName(id) }}
+                      <button class="tag-remove" @click.stop="removeWarehouse(id)">×</button>
+                    </span>
+                  </span>
+                  <span v-else class="placeholder">请选择仓库</span>
+                </div>
+              </div>
+            </div>
+            <div class="form-item">
+              <label>冶炼厂</label>
+              <div class="select-box" @click="openSmelterModal">
+                <div class="selected-items">
+                  <span v-if="selectedSmelterIds.length" class="selected-tag-wrapper">
+                    <span v-for="id in selectedSmelterIds" :key="id" class="selected-tag">
+                      {{ getSmelterName(id) }}
+                      <button class="tag-remove" @click.stop="removeSmelter(id)">×</button>
+                    </span>
+                  </span>
+                  <span v-else class="placeholder">请选择冶炼厂</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-row two-cols">
+            <div class="form-item">
+              <label>品类</label>
+              <div class="select-box" @click="openCategoryModal">
+                <div class="selected-items">
+                  <span v-if="selectedCategoryIds.length" class="selected-tag-wrapper">
+                    <span v-for="id in selectedCategoryIds" :key="id" class="selected-tag category-tag">
+                      {{ getCategoryName(id) }}
+                    </span>
+                  </span>
+                  <span v-else class="placeholder">请选择品类</span>
+                </div>
+              </div>
+            </div>
+            <div class="form-item">
+              <label>价格类型</label>
+              <div class="price-type-wrapper">
+                <select v-model="selectedPriceType" class="price-type-select">
+                  <option value="standard">标准价</option>
+                  <option value="3percent">3%</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button class="btn-primary" :disabled="queryLoading" @click="queryComparison">
+              <span class="btn-icon"></span>
+              {{ queryLoading ? '查询中...' : '查询' }}
+            </button>
+            <button class="btn-outline" @click="resetQuery">
+              <span class="btn-icon"></span>
+              重置
+            </button>
+          </div>
+        </div>
       </div>
-      <div v-else-if="queried" class="empty-result">未查询到数据</div>
+    </div>
+
+    <!-- 弹窗：选择仓库 -->
+    <teleport to="body">
+      <div v-if="warehouseModalVisible" class="modal-overlay" @click.self="closeWarehouseModal">
+        <div class="modal-container">
+          <div class="modal-header">
+            <h3>选择仓库</h3>
+            <button class="close" @click="closeWarehouseModal">×</button>
+          </div>
+          <div class="modal-body">
+            <input v-model="warehouseSearch" type="text" placeholder="搜索仓库..." class="search-input" />
+            <div class="checkbox-group">
+              <label v-for="w in filteredWarehouses" :key="w.id" class="checkbox-item">
+                <input type="checkbox" :value="w.id" v-model="tempSelectedWarehouseIds" />
+                {{ w.name }}
+              </label>
+              <div v-if="!filteredWarehouses.length" class="empty-hint">暂无数据</div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-modal" @click="closeWarehouseModal">取消</button>
+            <button class="btn-modal btn-primary-modal" @click="confirmWarehouseSelection">确定</button>
+          </div>
+        </div>
+      </div>
+    </teleport>
+
+    <!-- 弹窗：选择冶炼厂 -->
+    <teleport to="body">
+      <div v-if="smelterModalVisible" class="modal-overlay" @click.self="closeSmelterModal">
+        <div class="modal-container">
+          <div class="modal-header">
+            <h3>选择冶炼厂</h3>
+            <button class="close" @click="closeSmelterModal">×</button>
+          </div>
+          <div class="modal-body">
+            <input v-model="smelterSearch" type="text" placeholder="搜索冶炼厂..." class="search-input" />
+            <div class="checkbox-group">
+              <label v-for="s in filteredSmelters" :key="s.id" class="checkbox-item">
+                <input type="checkbox" :value="s.id" v-model="tempSelectedSmelterIds" />
+                {{ s.name }}
+              </label>
+              <div v-if="!filteredSmelters.length" class="empty-hint">暂无数据</div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-modal" @click="closeSmelterModal">取消</button>
+            <button class="btn-modal btn-primary-modal" @click="confirmSmelterSelection">确定</button>
+          </div>
+        </div>
+      </div>
+    </teleport>
+
+    <!-- 弹窗：选择品类 -->
+    <teleport to="body">
+      <div v-if="categoryModalVisible" class="modal-overlay" @click.self="closeCategoryModal">
+        <div class="modal-container">
+          <div class="modal-header">
+            <h3>选择品类</h3>
+            <button class="close" @click="closeCategoryModal">×</button>
+          </div>
+          <div class="modal-body">
+            <input v-model="categorySearch" type="text" placeholder="搜索品类..." class="search-input" />
+            <div class="checkbox-group">
+              <label v-for="c in filteredCategories" :key="c.id" class="checkbox-item">
+                <input type="checkbox" :value="c.id" v-model="tempSelectedCategoryIds" />
+                {{ c.name }}
+              </label>
+              <div v-if="!filteredCategories.length" class="empty-hint">暂无数据</div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-modal" @click="closeCategoryModal">取消</button>
+            <button class="btn-modal btn-primary-modal" @click="confirmCategorySelection">确定</button>
+          </div>
+        </div>
+      </div>
+    </teleport>
+  </div>
+
+  <!-- 结果页面 -->
+  <div v-else class="result-page">
+    <div class="result-card">
+      <div class="result-header">
+        <h2>价格查询</h2>
+      </div>
+      <div class="result-body">
+        <div class="result-content">
+          <div class="result-label">查询结果</div>
+          <div class="result-text">{{ resultSuggestion }}</div>
+        </div>
+        <button class="btn-back" @click="backToQuery">返回查询</button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed, reactive, nextTick } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 
 const API_BASE = '/tl'
-const TONS_PER_TRUCK = 35   // 每车吨数
-const DISTANCE_KM = 1       // TODO: 距离(km)，待接口支持后替换
 
+// 页面状态
+const showResult = ref(false)
+const resultSuggestion = ref('')
+
+// 数据
 const warehouses = ref([])
 const smelters = ref([])
 const masterCategories = ref([])
-const queryParams = ref({ warehouseIds: [], smelterIds: [], categoryIds: [] })
-const comparisonResults = ref([])
+
+// 仓库
+const warehouseModalVisible = ref(false)
+const warehouseSearch = ref('')
+const tempSelectedWarehouseIds = ref([])
+const selectedWarehouseIds = ref([])
+
+// 冶炼厂
+const smelterModalVisible = ref(false)
+const smelterSearch = ref('')
+const tempSelectedSmelterIds = ref([])
+const selectedSmelterIds = ref([])
+
+// 品类
+const categoryModalVisible = ref(false)
+const categorySearch = ref('')
+const tempSelectedCategoryIds = ref([])
+const selectedCategoryIds = ref([])
+
+// 查询状态
 const queryLoading = ref(false)
-const queried = ref(false)
-const profitSort = ref(null)
 
-const warehouseOpen = ref(false)
-const smelterOpen = ref(false)
-const categoryOpen = ref(false)
-const warehouseTrigger = ref(null)
-const smelterTrigger = ref(null)
-const categoryTrigger = ref(null)
-const dropdownStyle = reactive({ warehouse: {}, smelter: {}, category: {} })
+// 价格类型
+const selectedPriceType = ref('standard')
 
-function calcStyle(triggerEl) {
-  const r = triggerEl.getBoundingClientRect()
-  return {
-    position: 'fixed',
-    top: r.bottom + 4 + 'px',
-    left: r.left + 'px',
-    width: r.width + 'px',
-    zIndex: 9999,
-  }
-}
-
-function toggleDropdown(name) {
-  const triggerMap = { warehouse: warehouseTrigger, smelter: smelterTrigger, category: categoryTrigger }
-  const openMap = { warehouse: warehouseOpen, smelter: smelterOpen, category: categoryOpen }
-  const isOpen = openMap[name].value
-  // 关闭其他
-  warehouseOpen.value = false
-  smelterOpen.value = false
-  categoryOpen.value = false
-  if (!isOpen) {
-    nextTick(() => {
-      const el = triggerMap[name].value
-      if (el) dropdownStyle[name] = calcStyle(el)
-    })
-    openMap[name].value = true
-  }
-}
-
-// 点击外部关闭
-if (typeof window !== 'undefined') {
-  window.addEventListener('click', () => {
-    warehouseOpen.value = false
-    smelterOpen.value = false
-    categoryOpen.value = false
-  })
-}
-
-function toggleId(arr, id) {
-  const i = arr.indexOf(id)
-  if (i === -1) arr.push(id)
-  else arr.splice(i, 1)
-}
-
-const sortedResults = computed(() => {
-  if (!profitSort.value) return comparisonResults.value
-  return [...comparisonResults.value].sort((a, b) => {
-    const pa = a.profit ?? -Infinity
-    const pb = b.profit ?? -Infinity
-    return profitSort.value === 'desc' ? pb - pa : pa - pb
-  })
+// 过滤
+const filteredWarehouses = computed(() => {
+  if (!warehouseSearch.value) return warehouses.value
+  return warehouses.value.filter(w => 
+    w.name.toLowerCase().includes(warehouseSearch.value.toLowerCase())
+  )
 })
 
-function toggleProfitSort() {
-  if (profitSort.value === null) profitSort.value = 'desc'
-  else if (profitSort.value === 'desc') profitSort.value = 'asc'
-  else profitSort.value = null
+const filteredSmelters = computed(() => {
+  if (!smelterSearch.value) return smelters.value
+  return smelters.value.filter(s => 
+    s.name.toLowerCase().includes(smelterSearch.value.toLowerCase())
+  )
+})
+
+const filteredCategories = computed(() => {
+  if (!categorySearch.value) return masterCategories.value
+  return masterCategories.value.filter(c => 
+    c.name.toLowerCase().includes(categorySearch.value.toLowerCase())
+  )
+})
+
+function getWarehouseName(id) {
+  const w = warehouses.value.find(w => w.id === id)
+  return w ? w.name : ''
+}
+function getSmelterName(id) {
+  const s = smelters.value.find(s => s.id === id)
+  return s ? s.name : ''
+}
+function getCategoryName(id) {
+  const c = masterCategories.value.find(c => c.id === id)
+  return c ? c.name : ''
+}
+
+function removeWarehouse(id) {
+  selectedWarehouseIds.value = selectedWarehouseIds.value.filter(i => i !== id)
+}
+function removeSmelter(id) {
+  selectedSmelterIds.value = selectedSmelterIds.value.filter(i => i !== id)
+}
+
+// 仓库弹窗
+function openWarehouseModal() {
+  tempSelectedWarehouseIds.value = [...selectedWarehouseIds.value]
+  warehouseSearch.value = ''
+  warehouseModalVisible.value = true
+}
+function closeWarehouseModal() {
+  warehouseModalVisible.value = false
+}
+function confirmWarehouseSelection() {
+  selectedWarehouseIds.value = [...tempSelectedWarehouseIds.value]
+  closeWarehouseModal()
+}
+
+// 冶炼厂弹窗
+function openSmelterModal() {
+  tempSelectedSmelterIds.value = [...selectedSmelterIds.value]
+  smelterSearch.value = ''
+  smelterModalVisible.value = true
+}
+function closeSmelterModal() {
+  smelterModalVisible.value = false
+}
+function confirmSmelterSelection() {
+  selectedSmelterIds.value = [...tempSelectedSmelterIds.value]
+  closeSmelterModal()
+}
+
+// 品类弹窗
+function openCategoryModal() {
+  tempSelectedCategoryIds.value = [...selectedCategoryIds.value]
+  categorySearch.value = ''
+  categoryModalVisible.value = true
+}
+function closeCategoryModal() {
+  categoryModalVisible.value = false
+}
+function confirmCategorySelection() {
+  selectedCategoryIds.value = [...tempSelectedCategoryIds.value]
+  closeCategoryModal()
+}
+
+function resetQuery() {
+  selectedWarehouseIds.value = []
+  selectedSmelterIds.value = []
+  selectedCategoryIds.value = []
+  selectedPriceType.value = 'standard'
+}
+
+function backToQuery() {
+  showResult.value = false
+  resultSuggestion.value = ''
+}
+
+async function queryComparison() {
+  if (!selectedWarehouseIds.value.length) {
+    alert('请选择仓库')
+    return
+  }
+  if (!selectedSmelterIds.value.length) {
+    alert('请选择冶炼厂')
+    return
+  }
+  if (!selectedCategoryIds.value.length) {
+    alert('请至少选择一个品类')
+    return
+  }
+
+  queryLoading.value = true
+
+  try {
+    const res = await fetch(`${API_BASE}/get_comparison`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        '选中仓库id列表': selectedWarehouseIds.value,
+        '冶炼厂id列表': selectedSmelterIds.value,
+        '品类id列表': selectedCategoryIds.value,
+        'price_type': selectedPriceType.value
+      })
+    })
+    const data = await res.json()
+    if (data.code === 200 && data.data) {
+      resultSuggestion.value = data.data.suggestion || data.data || '暂无建议'
+      showResult.value = true
+    } else {
+      alert(data.msg || '查询失败')
+    }
+  } catch (err) {
+    alert('查询失败，请稍后重试')
+  } finally {
+    queryLoading.value = false
+  }
 }
 
 async function loadWarehouses() {
@@ -206,7 +366,6 @@ async function loadWarehouses() {
     console.error('获取仓库失败', err)
   }
 }
-
 async function loadSmelters() {
   try {
     const res = await fetch(`${API_BASE}/get_smelters`)
@@ -218,7 +377,6 @@ async function loadSmelters() {
     console.error('获取冶炼厂失败', err)
   }
 }
-
 async function loadMasterCategories() {
   try {
     const res = await fetch(`${API_BASE}/get_categories`)
@@ -231,56 +389,6 @@ async function loadMasterCategories() {
   }
 }
 
-function resetQuery() {
-  queryParams.value = { warehouseIds: [], smelterIds: [], categoryIds: [] }
-  comparisonResults.value = []
-  queried.value = false
-}
-
-async function queryComparison() {
-  if (!queryParams.value.warehouseIds.length) { alert('请选择仓库'); return }
-  if (!queryParams.value.smelterIds.length) { alert('请选择冶炼厂'); return }
-  if (!queryParams.value.categoryIds.length) { alert('请至少选择一个品类'); return }
-
-  queryLoading.value = true
-  queried.value = true
-
-  try {
-    const res = await fetch(`${API_BASE}/get_comparison`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        '选中仓库id列表': queryParams.value.warehouseIds,
-        '冶炼厂id列表': queryParams.value.smelterIds,
-        '品类id列表': queryParams.value.categoryIds
-      })
-    })
-    const data = await res.json()
-    if (data.code === 200 && data.data && data.data.length) {
-      comparisonResults.value = data.data.map(item => {
-        const price = item['报价'] ?? null
-        const freight = item['运费'] || 0
-        // 每车利润 = 报价 × 每车吨数 - 运费(元/公里) × 距离
-        const profit = price != null ? price * TONS_PER_TRUCK - freight * DISTANCE_KM : null
-        return {
-          warehouse: item['仓库'],
-          smelter: item['冶炼厂'],
-          category: item['品类'],
-          price,
-          freight,
-          profit
-        }
-      })
-    } else {
-      comparisonResults.value = []
-    }
-  } catch (err) {
-    alert('查询失败')
-  } finally {
-    queryLoading.value = false
-  }
-}
-
 onMounted(() => {
   loadWarehouses()
   loadSmelters()
@@ -289,162 +397,197 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* 查询页面样式 */
 .price-query {
-  background: #fff;
-  border-radius: 8px;
-  overflow: hidden;
-}
-.card-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid #e8e8e8;
-  background: #fafafa;
-  font-weight: 600;
-}
-.card-body {
-  padding: 24px;
-}
-.query-form {
-  margin-bottom: 24px;
-}
-.form-row {
   display: flex;
-  gap: 32px;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 24px;
+  background: #f5f7fa;
 }
-.form-item {
+.query-card {
+  background: #fff;
+  border-radius: 28px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  height: 75vh;  /* 改为75vh */
+  overflow: hidden;
+  margin-top: -70px;  /* 上挪30px，整体上移 */
+}
+
+.card-header {
+  padding: 28px 44px;
+  background: linear-gradient(135deg, #f8f9fc 0%, #fff 100%);
+  border-bottom: 1px solid #e8ecef;
+  flex-shrink: 0;
+}
+.card-header h2 {
+  font-size: 32px;
+  font-weight: 600;
+  color: #1a2c3e;
+  margin: 0 0 8px 0;
+}
+.card-header .subtitle {
+  font-size: 16px;
+  color: #7f8c8d;
+  margin: 0;
+}
+
+.card-body {
   flex: 1;
-  min-width: 200px;
+  padding: 15px;
+  box-sizing: border-box;
+  min-height: 0;
+}
+
+.query-section {
+  background: #f8fafc;
+  border-radius: 24px;
+  height: 100%;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+.section-dot {
+  width: 4px;
+  height: 18px;
+  background: #2e7d32;
+  border-radius: 2px;
+}
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.form-row {
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+.form-row.two-cols {
+  display: flex;
+  gap: 24px;
+}
+.form-row.two-cols .form-item {
+  flex: 1;
 }
 .form-item label {
   display: block;
   font-size: 13px;
   font-weight: 500;
+  color: #4a5568;
   margin-bottom: 8px;
-  color: #333;
 }
-.multi-select {
-  position: relative;
-  width: 100%;
-  user-select: none;
-}
-.ms-trigger {
-  display: flex;
-  align-items: center;
-  min-height: 38px;
-  padding: 4px 8px;
-  border: 1px solid #d9d9d9;
-  border-radius: 8px;
+
+.select-box {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
   background: #fff;
   cursor: pointer;
-  gap: 4px;
-  flex-wrap: wrap;
+  min-height: 44px;
+  padding: 8px 6px;
 }
-.multi-select.open .ms-trigger { border-color: #2e7d32; }
-.ms-placeholder { color: #aaa; font-size: 14px; flex: 1; }
-.ms-arrow { margin-left: auto; color: #888; font-size: 12px; flex-shrink: 0; }
-.ms-tags { display: flex; flex-wrap: wrap; gap: 4px; flex: 1; }
-.ms-tag {
+.select-box:hover {
+  border-color: #2e7d32;
+  box-shadow: 0 0 0 3px rgba(46, 125, 50, 0.1);
+}
+.selected-items {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+}
+.selected-tag-wrapper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.selected-tag {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   background: #e8f5e9;
   color: #2e7d32;
-  border-radius: 4px;
-  padding: 2px 6px;
+  padding: 2px 8px;
+  border-radius: 8px;
   font-size: 12px;
 }
-.ms-tag i { cursor: pointer; font-style: normal; font-weight: bold; }
-.ms-tag i:hover { color: #c62828; }
-.ms-dropdown-portal {
-  background: #fff;
-  border: 1px solid #d9d9d9;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0,0,0,.12);
-  max-height: 220px;
-  overflow-y: auto;
-  padding: 4px 0;
+.category-tag {
+  background: #e3f2fd;
+  color: #1976d2;
 }
-.ms-option {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  font-size: 13px;
+.tag-remove {
+  background: none;
+  border: none;
+  color: #9e9e9e;
   cursor: pointer;
+  font-size: 12px;
+  padding: 0 2px;
 }
-.ms-option:hover { background: #f5f5f5; }
-.ms-option input { width: 15px; height: 15px; cursor: pointer; flex-shrink: 0; }
-.ms-empty { padding: 10px 14px; color: #999; font-size: 13px; }
+.tag-remove:hover {
+  color: #e53935;
+}
+.placeholder {
+  color: #a0aec0;
+  font-size: 13px;
+}
+.price-type-wrapper {
+  width: 100%;
+}
+.price-type-select {
+  width: 100%;
+  padding: 8px 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  font-size: 13px;
+  background: #fff;
+  cursor: pointer;
+  min-height: 44px;
+}
+.price-type-select:focus {
+  outline: none;
+  border-color: #2e7d32;
+  box-shadow: 0 0 0 3px rgba(46, 125, 50, 0.1);
+}
+
 .form-actions {
   display: flex;
   gap: 16px;
-  margin-top: 8px;
-}
-.result-section {
-  margin-top: 24px;
-  border-top: 1px solid #e8e8e8;
-  padding-top: 20px;
-}
-.result-header {
-  font-weight: 600;
-  margin-bottom: 16px;
-}
-.data-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-  border: 1px solid #e8e8e8;
-  border-radius: 8px;
-  overflow: hidden;
-}
-.data-table th,
-.data-table td {
-  padding: 12px 20px;
-  text-align: left;
-  border-bottom: 1px solid #e8e8e8;
-  border-right: 1px solid #e8e8e8;
-}
-.data-table th:last-child,
-.data-table td:last-child {
-  border-right: none;
-}
-.data-table tr:last-child td {
-  border-bottom: none;
-}
-.data-table th {
-  background: #fafafa;
-  font-weight: 500;
-}
-.price {
-  color: #2e7d32;
-  font-weight: 500;
-}
-.total {
-  color: #f57c00;
-  font-weight: 600;
-}
-.sort-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 13px;
-  padding: 0 2px;
-  color: #555;
-}
-.sort-btn:hover { color: #2e7d32; }
-.empty-result {
-  text-align: center;
-  padding: 40px;
-  color: #999;
+  justify-content: center;
+  margin-top: auto;
+  padding-top: 16px;
+  flex-shrink: 0;
 }
 .btn-primary {
   background: #2e7d32;
   border: none;
   padding: 8px 28px;
-  border-radius: 6px;
+  border-radius: 12px;
   color: #fff;
   cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.btn-primary:hover {
+  background: #1b5e20;
 }
 .btn-primary:disabled {
   opacity: 0.6;
@@ -452,13 +595,239 @@ onMounted(() => {
 }
 .btn-outline {
   background: #fff;
-  border: 1px solid #d9d9d9;
+  border: 1px solid #e2e8f0;
   padding: 7px 27px;
-  border-radius: 6px;
+  border-radius: 12px;
   cursor: pointer;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 .btn-outline:hover {
   border-color: #2e7d32;
   color: #2e7d32;
+  background: #f8fafc;
+}
+.btn-icon {
+  font-size: 14px;
+}
+
+/* 弹窗样式 - 与采购建议页面保持一致 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal-container {
+  background: #fff;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 580px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+.modal-container.modal-large {
+  max-width: 500px;
+  width: 90%;
+  max-height: 70vh;
+  min-height: 400px;
+}
+.modal-header {
+  padding: 18px 24px;
+  border-bottom: 1px solid #e8e8e8;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.modal-header h3 {
+  font-size: 20px;
+  font-weight: 600;
+}
+.modal-header .close {
+  background: none;
+  border: none;
+  font-size: 26px;
+  cursor: pointer;
+  color: #999;
+}
+.modal-body {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+.modal-footer {
+  padding: 18px 24px;
+  border-top: 1px solid #e8e8e8;
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+}
+.btn-modal {
+  min-width: 90px;
+  padding: 10px 20px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 15px;
+  text-align: center;
+}
+.btn-modal:hover {
+  border-color: #2e7d32;
+  color: #2e7d32;
+}
+.btn-primary-modal {
+  background: #2e7d32;
+  border-color: #2e7d32;
+  color: #fff;
+}
+.btn-primary-modal:hover {
+  background: #1b5e20;
+  color: #fff;
+}
+.search-input {
+  width: 100%;
+  padding: 10px 8px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  font-size: 14px;
+  margin-bottom: 18px;
+}
+.checkbox-group-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+.checkbox-group-modal::-webkit-scrollbar {
+  width: 6px;
+}
+.checkbox-group-modal::-webkit-scrollbar-track {
+  background: #f0f0f0;
+  border-radius: 3px;
+}
+.checkbox-group-modal::-webkit-scrollbar-thumb {
+  background: #c0c0c0;
+  border-radius: 3px;
+}
+.checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  cursor: pointer;
+}
+.checkbox-label input {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+.checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+.checkbox-item:hover {
+  background: #f8fafc;
+}
+.checkbox-item input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+.empty-hint {
+  padding: 20px;
+  text-align: center;
+  color: #a0aec0;
+}
+
+/* 结果页面样式 */
+.result-page {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 24px;
+  background: #f5f7fa;
+}
+.result-card {
+  background: #fff;
+  border-radius: 28px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  overflow: hidden;
+}
+.result-header {
+  padding: 28px 44px;
+  background: linear-gradient(135deg, #f8f9fc 0%, #fff 100%);
+  border-bottom: 1px solid #e8ecef;
+}
+.result-header h2 {
+  font-size: 32px;
+  font-weight: 600;
+  color: #1a2c3e;
+  margin: 0;
+}
+.result-body {
+  padding: 36px 44px;
+}
+.result-content {
+  background: #f8fafc;
+  border-radius: 20px;
+  padding: 28px;
+  margin-bottom: 28px;
+}
+.result-label {
+  font-size: 15px;
+  font-weight: 500;
+  color: #2e7d32;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e2e8f0;
+}
+.result-text {
+  font-size: 16px;
+  line-height: 1.6;
+  color: #2c3e50;
+  white-space: pre-wrap;
+}
+.btn-back {
+  display: block;
+  width: 160px;
+  margin: 0 auto;
+  background: #2e7d32;
+  border: none;
+  padding: 10px 24px;
+  border-radius: 10px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: center;
+}
+.btn-back:hover {
+  background: #1b5e20;
 }
 </style>
