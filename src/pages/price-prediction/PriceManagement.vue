@@ -221,9 +221,24 @@
           <div v-for="(row, ri) in mappingRows" :key="ri" class="mapping-row">
             <span class="mapping-id">ID {{ row.品类id }}</span>
             <div class="mapping-tags">
-              <div v-for="(name, ni) in row.品类名称" :key="ni" class="tag-item">
+              <div
+                v-for="(name, ni) in row.品类名称"
+                :key="ni"
+                class="tag-item"
+                draggable="true"
+                :class="{
+                  'tag-dragging': dragState.from.ri === ri && dragState.from.ni === ni,
+                  'tag-drag-over': dragState.over.ri === ri && dragState.over.ni === ni
+                    && !(dragState.from.ri === ri && dragState.from.ni === ni)
+                }"
+                @dragstart="onDragStart(ri, ni)"
+                @dragover.prevent="onDragOver(ri, ni)"
+                @drop.prevent="onDrop(ri, ni)"
+                @dragend="onDragEnd"
+              >
+                <span class="drag-handle">⠿</span>
                 <span v-if="ni === 0" class="tag-main-label">主</span>
-                <input v-model="row.品类名称[ni]" type="text" class="tag-input" />
+                <input v-model="row.品类名称[ni]" type="text" class="tag-input" @dragstart.stop />
                 <button class="tag-del" @click="row.品类名称.splice(ni, 1)" :disabled="row.品类名称.length <= 1">×</button>
               </div>
               <button class="tag-add" @click="row.品类名称.push('')">+ 别名</button>
@@ -633,6 +648,38 @@ async function deleteTaxRate(row) {
 }
 
 // ---- 品类映射表弹窗 ----
+const dragState = ref({
+  from: { ri: -1, ni: -1 },
+  over: { ri: -1, ni: -1 }
+})
+
+function onDragStart(ri, ni) {
+  dragState.value.from = { ri, ni }
+  dragState.value.over = { ri, ni }
+}
+function onDragOver(ri, ni) {
+  dragState.value.over = { ri, ni }
+}
+function onDrop(ri, ni) {
+  const { from, over } = dragState.value
+  if (from.ri === -1) return
+  if (from.ri === over.ri && from.ni === over.ni) return
+  const srcNames = mappingRows.value[from.ri].品类名称
+  const moved = srcNames.splice(from.ni, 1)[0]
+  // 源行拖空后移除整行（后端保存时按合并逻辑处理）
+  if (srcNames.length === 0) {
+    mappingRows.value.splice(from.ri, 1)
+    // 目标行索引可能因删除源行而偏移
+    const adjustedRi = from.ri < over.ri ? over.ri - 1 : over.ri
+    mappingRows.value[adjustedRi].品类名称.splice(over.ni, 0, moved)
+  } else {
+    mappingRows.value[over.ri].品类名称.splice(over.ni, 0, moved)
+  }
+}
+function onDragEnd() {
+  dragState.value = { from: { ri: -1, ni: -1 }, over: { ri: -1, ni: -1 } }
+}
+
 const mappingModalOpen = ref(false)
 const mappingLoading = ref(false)
 const mappingSaving = ref(false)
@@ -1186,4 +1233,21 @@ async function saveMappingTable() {
   padding: 3px 10px;
 }
 .tag-add:hover { border-color: #2e7d32; color: #2e7d32; }
+.drag-handle {
+  cursor: grab;
+  color: #ccc;
+  font-size: 14px;
+  padding: 0 2px;
+  user-select: none;
+  line-height: 1;
+}
+.drag-handle:active { cursor: grabbing; }
+.tag-dragging {
+  opacity: 0.35;
+}
+.tag-drag-over {
+  outline: 2px dashed #1565c0;
+  border-radius: 6px;
+  background: #e3f2fd;
+}
 </style>
